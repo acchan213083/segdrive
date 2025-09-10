@@ -11,7 +11,7 @@ TM1637Display display(CLK, DIO);
 bool state = false;
 int t = 5;
 int cycle = 0;
-float speedFactor = .0; // 倍速係数
+float speedFactor = 1.0; // 倍速係数
 
 // セグメントコード定義（文字列 "FINISH" 用）
 const uint8_t CHAR_F     = 0b01110001;
