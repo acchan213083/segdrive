@@ -75,6 +75,7 @@ This project controls two DC motors (RE-280RA) via an L298 motor driver, two ele
 - Use buttons or sensors to trigger or reset cycles
 - Display additional messages or animations after `FINISH`
 
----
+## 📜 License
 
-Enjoy building your kinetic timing controller!
+This project is licensed under the MIT License.  
+See the [LICENSE](LICENSE) file for details.
