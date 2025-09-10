@@ -1,41 +1,80 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Arduino Motor Timer Display</title>
-</head>
-<body>
-  <h1>🕒 Arduino Motor Timer with 7-Segment Display</h1>
+# Arduino Timing Controller with Motor, Electromagnets, and 7-Segment Display
 
-  <p>
-    This project uses an Arduino to control a motor based on a countdown timer, with real-time display on a 7-segment LED module (TM1637). It's designed for makers and learners who want to explore time-based automation and visual feedback using microcontrollers.
-  </p>
+This project controls two DC motors (RE-280RA) via an L298 motor driver, two electromagnet modules (KEYESTUDIO), and a 4-digit 7-segment LED display (TM1637). It performs timed cycles with visual feedback and synchronized electromagnet activation.
 
-  <h2>🔧 Features</h2>
-  <ul>
-    <li>Countdown timer with adjustable duration</li>
-    <li>Motor starts and stops based on timer logic</li>
-    <li>Real-time display using TM1637 4-digit 7-segment LED</li>
-    <li>Simple button interface for start/reset</li>
-    <li>Easy-to-modify Arduino code</li>
-  </ul>
+## 🔧 Hardware Components
 
-  <h2>📦 Components Used</h2>
-  <ul>
-    <li>Arduino Uno</li>
-    <li>TM1637 4-digit 7-segment LED module</li>
-    <li>DC Motor</li>
-    <li>Motor Driver (e.g., L298N)</li>
-    <li>Push Button</li>
-    <li>External Power Supply (for motor)</li>
-    <li>Jumper wires, breadboard</li>
-  </ul>
+- Arduino Uno
+- L298 Motor Driver
+- RE-280RA DC Motors ×2
+- KEYESTUDIO Electromagnet Modules ×2
+- TM1637 4-digit 7-segment LED display
+- External power supply (recommended for motors and electromagnets)
 
-  <h2>🚀 Getting Started</h2>
-  <p>
-    Upload the provided Arduino sketch to your board, connect the components as shown in the wiring diagram, and press the button to start the countdown. Once the timer reaches zero, the motor will automatically stop.
-  </p>
+## ⚙️ Pin Configuration
 
-  <p><em>Note: This README is still in progress. More details, diagrams, and code examples will be added soon.</em></p>
-</body>
-</html>
+| Component           | Arduino Pin |
+|--------------------|-------------|
+| Motor A IN1        | D4          |
+| Motor A IN2        | D5          |
+| Motor B IN3        | D6          |
+| Motor B IN4        | D7          |
+| TM1637 CLK         | D2          |
+| TM1637 DIO         | D3          |
+| LED Indicator      | D13         |
+| Electromagnet 1    | D8          |
+| Electromagnet 2    | D9          |
+
+## ⏱️ Operation Overview
+
+- The program begins with a 5-second "interval" phase (cycle 0).
+- Then it alternates between:
+  - **45 seconds of motor operation** (`state = true`)
+  - **5 seconds of rest interval** (`state = false`)
+- This loop continues for **10 full cycles**.
+- After the 10th cycle, the display scrolls the word `FINISH` from right to left.
+
+## 🔌 Electromagnet Behavior
+
+- **Electromagnet 1** activates when the 5-second interval ends.
+- **Electromagnet 2** activates when the 45-second motor phase ends.
+- Each electromagnet stays ON for **5 seconds**, independently.
+- While active, the **colon `:` on the 7-segment display lights up for 1 second**.
+
+## 💡 Display Behavior
+
+- The 7-segment display shows:
+  - **Left 2 digits**: countdown seconds
+  - **Right 2 digits**: current cycle number
+- When an electromagnet is activated, the colon `:` appears for 1 second.
+- After 10 cycles, the display scrolls `FINISH` from right to left.
+
+## 🧠 Timing Logic
+
+- All timing is handled using `millis()` for non-blocking countdowns.
+- Countdown continues even while electromagnets are active.
+- Speed can be adjusted using the `speedFactor` variable (e.g. `2.0` for double speed).
+
+## 📄 Code Features
+
+- Non-blocking countdown using `millis()`
+- Independent control of two electromagnets
+- Visual feedback via colon and scrolling text
+- Modular functions for motor control, display, and magnet timing
+
+## 🚀 Getting Started
+
+1. Connect all components according to the pin configuration.
+2. Upload the Arduino sketch.
+3. Power the motors and electromagnets using an external supply.
+4. Watch the countdown cycles and electromagnet activation.
+
+## 🛠️ Customization Ideas
+
+- Add buzzer or sound feedback during electromagnet activation
+- Use buttons or sensors to trigger or reset cycles
+- Display additional messages or animations after `FINISH`
+
+---
+
+Enjoy building your kinetic timing controller!

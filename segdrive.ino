@@ -1,19 +1,30 @@
 #include <TM1637Display.h>
 
-#define motor1 4
-#define motor2 5
+#define IN1 4
+#define IN2 5
+#define IN3 6
+#define IN4 7
 #define CLK 2
 #define DIO 3
 #define LED 13
+#define electromagnet1 8
+#define electromagnet2 9
 
 TM1637Display display(CLK, DIO);
 
 bool state = false;
 int t = 5;
 int cycle = 0;
-float speedFactor = 1.0; // 倍速係数
+float speedFactor = 1.0;
 
-// セグメントコード定義（文字列 "FINISH" 用）
+unsigned long lastTick = 0;
+
+bool magnet1Active = false;
+bool magnet2Active = false;
+unsigned long magnet1Start = 0;
+unsigned long magnet2Start = 0;
+
+// セグメントコード定義
 const uint8_t CHAR_F     = 0b01110001;
 const uint8_t CHAR_I     = 0b00010000;
 const uint8_t CHAR_N     = 0b01010100;
@@ -22,42 +33,70 @@ const uint8_t CHAR_H     = 0b01110100;
 const uint8_t CHAR_BLANK = 0x00;
 
 void setup() {
-  pinMode(motor1, OUTPUT);
-  pinMode(motor2, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
   pinMode(LED, OUTPUT);
+  pinMode(electromagnet1, OUTPUT);
+  pinMode(electromagnet2, OUTPUT);
+
+  digitalWrite(electromagnet1, LOW);
+  digitalWrite(electromagnet2, LOW);
 
   display.setBrightness(7);
   showTimeAndCycle(t, cycle);
+  lastTick = millis();
 }
 
 void loop() {
-  drive();
-  showTimeAndCycle(t, cycle);
+  unsigned long now = millis();
 
-  delay((int)(1000 / speedFactor));
-  t -= 1;
+  // カウントダウン処理
+  if (now - lastTick >= (unsigned long)(1000 / speedFactor)) {
+    lastTick = now;
+    t -= 1;
+    showTimeAndCycle(t, cycle);
 
-  if (t == 0) {
-    if (state == true) {
-      if (cycle >= 10) {
-        finishScroll(); // ← スクロール表示に変更
-        while (true);
+    if (t == 0) {
+      if (state == true) {
+        // 動作終了 → 電磁石2をON
+        if (cycle >= 10) {
+          finishScroll();
+          while (true);
+        } else {
+          activateMagnet2();
+          state = false;
+          t = 5;
+        }
       } else {
-        state = false;
-        t = 5;
+        // インターバル終了 → 電磁石1をON
+        activateMagnet1();
+        cycle += 1;
+        state = true;
+        t = 45;
       }
-    } else {
-      cycle += 1;
-      state = true;
-      t = 45;
     }
   }
+
+  drive();
+  updateMagnets(now);
 }
 
 void drive() {
-  digitalWrite(motor1, state ? HIGH : LOW);
-  digitalWrite(motor2, state ? HIGH : LOW);
-  digitalWrite(LED,    state ? HIGH : LOW);
+  if (state) {
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
+    digitalWrite(LED, HIGH);
+  } else {
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, LOW);
+    digitalWrite(LED, LOW);
+  }
 }
 
 void showTimeAndCycle(int seconds, int cycle) {
@@ -70,14 +109,48 @@ void showTimeAndCycle(int seconds, int cycle) {
   display.setSegments(digits);
 }
 
+void activateMagnet1() {
+  digitalWrite(electromagnet1, HIGH);
+  magnet1Active = true;
+  magnet1Start = millis();
+
+  int combined = t * 100 + cycle;
+  display.showNumberDecEx(combined, 0x40, true); // コロンON
+}
+
+void activateMagnet2() {
+  digitalWrite(electromagnet2, HIGH);
+  magnet2Active = true;
+  magnet2Start = millis();
+
+  int combined = t * 100 + cycle;
+  display.showNumberDecEx(combined, 0x40, true); // コロンON
+}
+
+void updateMagnets(unsigned long now) {
+  if (magnet1Active && now - magnet1Start >= (unsigned long)(1000 / speedFactor)) {
+    showTimeAndCycle(t, cycle); // コロンOFF
+  }
+  if (magnet2Active && now - magnet2Start >= (unsigned long)(1000 / speedFactor)) {
+    showTimeAndCycle(t, cycle); // コロンOFF
+  }
+
+  if (magnet1Active && now - magnet1Start >= (unsigned long)(5000 / speedFactor)) {
+    digitalWrite(electromagnet1, LOW);
+    magnet1Active = false;
+  }
+  if (magnet2Active && now - magnet2Start >= (unsigned long)(5000 / speedFactor)) {
+    digitalWrite(electromagnet2, LOW);
+    magnet2Active = false;
+  }
+}
+
 void finishScroll() {
-  // "FINISH" を右端から左へスクロール表示
   const uint8_t message[] = {
     CHAR_F, CHAR_I, CHAR_N, CHAR_I, CHAR_S, CHAR_H
   };
   const int len = sizeof(message);
 
-  // スクロール表示（右端から左へ）
   for (int i = 0; i <= len + 3; i++) {
     uint8_t frame[4] = {
       (i >= 3 && i - 3 < len) ? message[i - 3] : CHAR_BLANK,
@@ -86,14 +159,17 @@ void finishScroll() {
       (i < len)               ? message[i]     : CHAR_BLANK
     };
     display.setSegments(frame);
-    delay(300); // スクロール速度
+    delay(300);
   }
 
-  // 最後に "FIN " を表示して停止
   uint8_t final[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_BLANK };
   display.setSegments(final);
 
-  digitalWrite(motor1, LOW);
-  digitalWrite(motor2, LOW);
+  digitalWrite(IN1, LOW);
+  digitalWrite(IN2, LOW);
+  digitalWrite(IN3, LOW);
+  digitalWrite(IN4, LOW);
   digitalWrite(LED, LOW);
+  digitalWrite(electromagnet1, LOW);
+  digitalWrite(electromagnet2, LOW);
 }
