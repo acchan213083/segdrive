@@ -1,38 +1,47 @@
-# Arduino Timing Controller with Motor, Electromagnets, and 7-Segment Display
+# Arduino Timing Controller with PWM Motor Control, Electromagnets, and 7-Segment Display
 
-This project controls two DC motors (RE-280RA) via an L298 motor driver, two electromagnet modules (KEYESTUDIO), and a 4-digit 7-segment LED display (TM1637). It performs timed cycles with visual feedback and synchronized electromagnet activation.
+This project controls two DC motors (RE-280RA) via PWM signals and an L298 motor driver, two electromagnet modules (KEYESTUDIO), and a 4-digit 7-segment LED display (TM1637). It performs timed cycles with visual feedback and synchronized electromagnet activation.
 
 ## 🔧 Hardware Components
 
-- Arduino Uno
-- L298 Motor Driver
-- RE-280RA DC Motors ×2
-- KEYESTUDIO Electromagnet Modules ×2
-- TM1637 4-digit 7-segment LED display
+- Arduino Uno  
+- L298 Motor Driver (PWM-compatible pins required)  
+- RE-280RA DC Motors ×2  
+- KEYESTUDIO Electromagnet Modules ×2  
+- TM1637 4-digit 7-segment LED display  
 - External power supply (recommended for motors and electromagnets)
 
 ## 📍 Pin Configuration
 
 | Component           | Arduino Pin |
 |--------------------|-------------|
-| Motor A IN1        | D4          |
-| Motor A IN2        | D5          |
-| Motor B IN3        | D6          |
-| Motor B IN4        | D7          |
+| Motor A IN1 (PWM)  | D5          |
+| Motor A IN2 (PWM)  | D6          |
+| Motor B IN3 (PWM)  | D9          |
+| Motor B IN4 (PWM)  | D10         |
 | TM1637 CLK         | D2          |
 | TM1637 DIO         | D3          |
 | LED Indicator      | D13         |
 | Electromagnet 1    | D8          |
-| Electromagnet 2    | D9          |
+| Electromagnet 2    | D11         |
+
+> ⚠️ Note: IN1–IN4 must be connected to PWM-capable pins on the Arduino Uno (3, 5, 6, 9, 10, 11).
 
 ## ⏱️ Operation Overview
 
 - The program begins with a 5-second "interval" phase (cycle 0).
 - Then it alternates between:
-  - **45 seconds of motor operation** (`state = true`)
+  - **45 seconds of PWM motor operation** (`state = true`)
   - **5 seconds of rest interval** (`state = false`)
 - This loop continues for **10 full cycles**.
 - After the 10th cycle, the display scrolls the word `FINISH` from right to left.
+
+## 🎚️ PWM Motor Control
+
+- Motors are controlled using `analogWrite()` for smooth speed control.
+- Each motor has an independent PWM power level:
+  - `motorPower1` and `motorPower2` (default: 180)
+- You can adjust these values to fine-tune motor speed.
 
 ## 🧲 Electromagnet Behavior
 
@@ -57,6 +66,7 @@ This project controls two DC motors (RE-280RA) via an L298 motor driver, two ele
 
 ## 📄 Code Features
 
+- PWM motor control via `analogWrite()`
 - Non-blocking countdown using `millis()`
 - Independent control of two electromagnets
 - Visual feedback via colon and scrolling text
@@ -71,6 +81,7 @@ This project controls two DC motors (RE-280RA) via an L298 motor driver, two ele
 
 ## 🛠️ Customization Ideas
 
+- Adjust `motorPower1` and `motorPower2` for speed tuning
 - Add buzzer or sound feedback during electromagnet activation
 - Use buttons or sensors to trigger or reset cycles
 - Display additional messages or animations after `FINISH`

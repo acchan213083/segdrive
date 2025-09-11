@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2025 [Your Name]
+Copyright (c) 2025 Namabayashi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,15 +24,15 @@ SOFTWARE.
 
 #include <TM1637Display.h>
 
-#define IN1 4
-#define IN2 5
-#define IN3 6
-#define IN4 7
+#define IN1 5   // PWM対応ピン
+#define IN2 6   // PWM対応ピン
+#define IN3 9   // PWM対応ピン
+#define IN4 10  // PWM対応ピン
 #define CLK 2
 #define DIO 3
 #define LED 13
 #define electromagnet1 8
-#define electromagnet2 9
+#define electromagnet2 11
 
 TM1637Display display(CLK, DIO);
 
@@ -47,6 +47,10 @@ bool magnet1Active = false;
 bool magnet2Active = false;
 unsigned long magnet1Start = 0;
 unsigned long magnet2Start = 0;
+
+// PWM出力値（0〜255）
+int motorPower1 = 180;
+int motorPower2 = 180;
 
 // セグメントコード定義
 const uint8_t CHAR_F     = 0b01110001;
@@ -76,7 +80,6 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // カウントダウン処理
   if (now - lastTick >= (unsigned long)(1000 / speedFactor)) {
     lastTick = now;
     t -= 1;
@@ -84,7 +87,6 @@ void loop() {
 
     if (t == 0) {
       if (state == true) {
-        // 動作終了 → 電磁石2をON
         if (cycle >= 10) {
           finishScroll();
           while (true);
@@ -94,7 +96,6 @@ void loop() {
           t = 5;
         }
       } else {
-        // インターバル終了 → 電磁石1をON
         activateMagnet1();
         cycle += 1;
         state = true;
@@ -109,16 +110,16 @@ void loop() {
 
 void drive() {
   if (state) {
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
+    analogWrite(IN1, motorPower1);
+    analogWrite(IN2, 0);
+    analogWrite(IN3, motorPower2);
+    analogWrite(IN4, 0);
     digitalWrite(LED, HIGH);
   } else {
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, LOW);
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, LOW);
+    analogWrite(IN1, 0);
+    analogWrite(IN2, 0);
+    analogWrite(IN3, 0);
+    analogWrite(IN4, 0);
     digitalWrite(LED, LOW);
   }
 }
@@ -139,7 +140,7 @@ void activateMagnet1() {
   magnet1Start = millis();
 
   int combined = t * 100 + cycle;
-  display.showNumberDecEx(combined, 0x40, true); // コロンON
+  display.showNumberDecEx(combined, 0x40, true);
 }
 
 void activateMagnet2() {
@@ -148,15 +149,15 @@ void activateMagnet2() {
   magnet2Start = millis();
 
   int combined = t * 100 + cycle;
-  display.showNumberDecEx(combined, 0x40, true); // コロンON
+  display.showNumberDecEx(combined, 0x40, true);
 }
 
 void updateMagnets(unsigned long now) {
   if (magnet1Active && now - magnet1Start >= (unsigned long)(1000 / speedFactor)) {
-    showTimeAndCycle(t, cycle); // コロンOFF
+    showTimeAndCycle(t, cycle);
   }
   if (magnet2Active && now - magnet2Start >= (unsigned long)(1000 / speedFactor)) {
-    showTimeAndCycle(t, cycle); // コロンOFF
+    showTimeAndCycle(t, cycle);
   }
 
   if (magnet1Active && now - magnet1Start >= (unsigned long)(5000 / speedFactor)) {
@@ -189,10 +190,10 @@ void finishScroll() {
   uint8_t final[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_BLANK };
   display.setSegments(final);
 
-  digitalWrite(IN1, LOW);
-  digitalWrite(IN2, LOW);
-  digitalWrite(IN3, LOW);
-  digitalWrite(IN4, LOW);
+  analogWrite(IN1, 0);
+  analogWrite(IN2, 0);
+  analogWrite(IN3, 0);
+  analogWrite(IN4, 0);
   digitalWrite(LED, LOW);
   digitalWrite(electromagnet1, LOW);
   digitalWrite(electromagnet2, LOW);
