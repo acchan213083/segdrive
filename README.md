@@ -11,7 +11,7 @@ This project controls two DC motors (RE-280RA) via an L298 motor driver, two ele
 - TM1637 4-digit 7-segment LED display
 - External power supply (recommended for motors and electromagnets)
 
-## ⚙️ Pin Configuration
+## 📍 Pin Configuration
 
 | Component           | Arduino Pin |
 |--------------------|-------------|
@@ -34,14 +34,14 @@ This project controls two DC motors (RE-280RA) via an L298 motor driver, two ele
 - This loop continues for **10 full cycles**.
 - After the 10th cycle, the display scrolls the word `FINISH` from right to left.
 
-## 🔌 Electromagnet Behavior
+## 🧲 Electromagnet Behavior
 
 - **Electromagnet 1** activates when the 5-second interval ends.
 - **Electromagnet 2** activates when the 45-second motor phase ends.
 - Each electromagnet stays ON for **5 seconds**, independently.
 - While active, the **colon `:` on the 7-segment display lights up for 1 second**.
 
-## 💡 Display Behavior
+## 📺 Display Behavior
 
 - The 7-segment display shows:
   - **Left 2 digits**: countdown seconds
@@ -49,7 +49,7 @@ This project controls two DC motors (RE-280RA) via an L298 motor driver, two ele
 - When an electromagnet is activated, the colon `:` appears for 1 second.
 - After 10 cycles, the display scrolls `FINISH` from right to left.
 
-## 🧠 Timing Logic
+## ⌚ Timing Logic
 
 - All timing is handled using `millis()` for non-blocking countdowns.
 - Countdown continues even while electromagnets are active.
