@@ -1,33 +1,9 @@
-/*
-MIT License
-
-Copyright (c) 2025 Namabayashi
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-*/
-
 #include <TM1637Display.h>
 
-#define IN1 5   // PWM対応ピン
-#define IN2 6   // PWM対応ピン
-#define IN3 9   // PWM対応ピン
-#define IN4 10  // PWM対応ピン
+#define IN1 5
+#define IN2 6
+#define IN3 9
+#define IN4 10
 #define CLK 2
 #define DIO 3
 #define LED 13
@@ -35,6 +11,9 @@ SOFTWARE.
 #define electromagnet2 11
 
 TM1637Display display(CLK, DIO);
+
+// 設定値
+const unsigned long MAGNET_ON_DURATION = 5000; // 電磁石のON時間（ミリ秒）
 
 bool state = false;
 int t = 5;
@@ -48,11 +27,9 @@ bool magnet2Active = false;
 unsigned long magnet1Start = 0;
 unsigned long magnet2Start = 0;
 
-// PWM出力値（0〜255）
 int motorPower1 = 180;
 int motorPower2 = 180;
 
-// セグメントコード定義
 const uint8_t CHAR_F     = 0b01110001;
 const uint8_t CHAR_I     = 0b00010000;
 const uint8_t CHAR_N     = 0b01010100;
@@ -61,6 +38,8 @@ const uint8_t CHAR_H     = 0b01110100;
 const uint8_t CHAR_BLANK = 0x00;
 
 void setup() {
+  Serial.begin(9600);
+
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
@@ -135,6 +114,7 @@ void showTimeAndCycle(int seconds, int cycle) {
 }
 
 void activateMagnet1() {
+  Serial.println("Magnet1 ON");
   digitalWrite(electromagnet1, HIGH);
   magnet1Active = true;
   magnet1Start = millis();
@@ -144,6 +124,7 @@ void activateMagnet1() {
 }
 
 void activateMagnet2() {
+  Serial.println("Magnet2 ON");
   digitalWrite(electromagnet2, HIGH);
   magnet2Active = true;
   magnet2Start = millis();
@@ -153,18 +134,13 @@ void activateMagnet2() {
 }
 
 void updateMagnets(unsigned long now) {
-  if (magnet1Active && now - magnet1Start >= (unsigned long)(1000 / speedFactor)) {
-    showTimeAndCycle(t, cycle);
-  }
-  if (magnet2Active && now - magnet2Start >= (unsigned long)(1000 / speedFactor)) {
-    showTimeAndCycle(t, cycle);
-  }
-
-  if (magnet1Active && now - magnet1Start >= (unsigned long)(5000 / speedFactor)) {
+  if (magnet1Active && now > magnet1Start && now - magnet1Start >= MAGNET_ON_DURATION) {
+    Serial.println("Magnet1 OFF");
     digitalWrite(electromagnet1, LOW);
     magnet1Active = false;
   }
-  if (magnet2Active && now - magnet2Start >= (unsigned long)(5000 / speedFactor)) {
+  if (magnet2Active && now > magnet2Start && now - magnet2Start >= MAGNET_ON_DURATION) {
+    Serial.println("Magnet2 OFF");
     digitalWrite(electromagnet2, LOW);
     magnet2Active = false;
   }
