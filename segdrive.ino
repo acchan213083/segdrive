@@ -33,11 +33,12 @@ SOFTWARE.
 #define LED 13
 #define electromagnet1 8
 #define electromagnet2 11
+#define SWITCH_PIN 7  // 追加：モーターを動かすスイッチ
 
 TM1637Display display(CLK, DIO);
 
-// 設定値
-const unsigned long MAGNET_ON_DURATION = 5000; // 電磁石のON時間（ミリ秒）
+const unsigned long MAGNET_ON_DURATION = 5000; // 電磁石のON時間
+const unsigned long MOTOR_ON_DURATION = 10000; // スイッチ押下後モーターON時間
 
 bool state = false;
 int t = 5;
@@ -51,8 +52,11 @@ bool magnet2Active = false;
 unsigned long magnet1Start = 0;
 unsigned long magnet2Start = 0;
 
-int motorPower1 = 255;
-int motorPower2 = 255;
+bool motorActive = false;
+unsigned long motorStartTime = 0;
+
+int motorPower1 = 255; // PWM for second motor
+int motorPower2 = 255; // PWM for second motor
 
 const uint8_t CHAR_F     = 0b01110001;
 const uint8_t CHAR_I     = 0b00010000;
@@ -71,6 +75,7 @@ void setup() {
   pinMode(LED, OUTPUT);
   pinMode(electromagnet1, OUTPUT);
   pinMode(electromagnet2, OUTPUT);
+  pinMode(SWITCH_PIN, INPUT_PULLUP);
 
   digitalWrite(electromagnet1, LOW);
   digitalWrite(electromagnet2, LOW);
@@ -83,6 +88,23 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
+  // ----- スイッチ押下でIN1/IN2モーター制御 -----
+  if (digitalRead(SWITCH_PIN) == LOW && !motorActive) {
+    motorActive = true;
+    motorStartTime = now;
+    analogWrite(IN1, 255);
+    analogWrite(IN2, 0);
+    Serial.println("Motor (IN1/IN2) ON for 10s");
+  }
+
+  if (motorActive && now - motorStartTime >= MOTOR_ON_DURATION) {
+    motorActive = false;
+    analogWrite(IN1, 0);
+    analogWrite(IN2, 0);
+    Serial.println("Motor (IN1/IN2) OFF");
+  }
+
+  // ----- 元のプログラムのループ処理 -----
   if (now - lastTick >= (unsigned long)(1000 / speedFactor)) {
     lastTick = now;
     t -= 1;
@@ -107,20 +129,17 @@ void loop() {
     }
   }
 
-  drive();
+  driveSecondMotor();
   updateMagnets(now);
 }
 
-void drive() {
+// 元のプログラムの2台目モーター制御（IN3/IN4）
+void driveSecondMotor() {
   if (state) {
-    analogWrite(IN1, motorPower1);
-    analogWrite(IN2, 0);
-    analogWrite(IN3, motorPower2);
+    analogWrite(IN3, motorPower1);
     analogWrite(IN4, 0);
     digitalWrite(LED, HIGH);
   } else {
-    analogWrite(IN1, 0);
-    analogWrite(IN2, 0);
     analogWrite(IN3, 0);
     analogWrite(IN4, 0);
     digitalWrite(LED, LOW);
@@ -171,9 +190,7 @@ void updateMagnets(unsigned long now) {
 }
 
 void finishScroll() {
-  const uint8_t message[] = {
-    CHAR_F, CHAR_I, CHAR_N, CHAR_I, CHAR_S, CHAR_H
-  };
+  const uint8_t message[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_I, CHAR_S, CHAR_H };
   const int len = sizeof(message);
 
   for (int i = 0; i <= len + 3; i++) {
@@ -199,7 +216,6 @@ void finishScroll() {
   digitalWrite(electromagnet1, LOW);
   digitalWrite(electromagnet2, LOW);
 
-  // 30秒待機してディスプレイを消灯
-  delay(30000); // 30秒（30000ミリ秒）
-  display.clear(); // ディスプレイ消灯
+  delay(30000); // 30秒待機してディスプレイを消灯
+  display.clear();
 }
