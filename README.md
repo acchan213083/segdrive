@@ -1,130 +1,112 @@
 # Arduino Timing Controller with PWM Motor Control, Electromagnets, and 7-Segment Display
 
-This project controls two DC motors via PWM signals, two electromagnets, and a 4-digit 7-segment LED display (TM1637). It performs timed cycles with countdown display, synchronized electromagnet activation, and a scrolling **FINISH** message at the end.
-
----
+This project controls two DC motors (RE-280RA) via PWM signals and an L298 motor driver, two electromagnet modules (KEYESTUDIO), and a 4-digit 7-segment LED display (TM1637). It performs timed cycles with visual feedback and synchronized electromagnet activation. Additionally, it supports a **momentary switch to trigger Motor1 and LED for 10 seconds**, including a **rotating '0' animation** on the display during the timer.
 
 ## 🔧 Hardware Components
 
 - Arduino Uno  
-- Motor driver (e.g. **L298N**, TB6612, or MOSFET-based)  
-- DC Motors ×2  
-- Electromagnet Modules ×2  
+- L298 Motor Driver (PWM-compatible pins required)  
+- RE-280RA DC Motors ×2  
+- KEYESTUDIO Electromagnet Modules ×2  
 - TM1637 4-digit 7-segment LED display  
-- External 12V power supply (recommended for motors and electromagnets)
-
----
+- Push Button Switch  
+- External power supply (recommended for motors and electromagnets)
 
 ## 📍 Pin Configuration
 
 | Component           | Arduino Pin |
 |--------------------|-------------|
-| Motor A IN1 (PWM)  | D5          |
-| Motor A IN2 (PWM)  | D6          |
-| Motor B IN3 (PWM)  | D9          |
-| Motor B IN4 (PWM)  | D10         |
+| Motor1 IN1 (PWM)   | D5          |
+| Motor1 IN2 (PWM)   | D6          |
+| Motor2 IN3 (PWM)   | D9          |
+| Motor2 IN4 (PWM)   | D10         |
 | TM1637 CLK         | D2          |
 | TM1637 DIO         | D3          |
 | LED Indicator      | D13         |
 | Electromagnet 1    | D8          |
 | Electromagnet 2    | D11         |
+| Momentary Switch   | D7          |
 
-> ⚠️ **Note:** IN1–IN4 must be connected to PWM-capable pins on the Arduino Uno (3, 5, 6, 9, 10, 11).  
-> ⚡ Always drive motors and electromagnets through a proper driver circuit with **flyback diodes** — never directly from Arduino pins.
-
----
+> ⚠️ Note: IN1–IN4 must be connected to PWM-capable pins on the Arduino Uno (3, 5, 6, 9, 10, 11). The switch uses INPUT_PULLUP configuration.
 
 ## ⏱️ Operation Overview
 
-- The program alternates between two phases:  
-  - **Motor ON phase** → motors run under PWM control, LED indicator ON  
-  - **Interval phase** → motors stopped, electromagnet activation  
-- **Electromagnet 1** activates at the start of a motor phase.  
-- **Electromagnet 2** activates during the rest interval.  
-- Each electromagnet stays ON for **5 seconds**.  
-- After **10 cycles**, the display scrolls `"FINISH"` and all outputs are shut down.  
+- The program begins with a 5-second **interval phase** (cycle 0).  
+- Then it alternates between:  
+  - **45 seconds of PWM motor operation** (Motor2, `state = true`)  
+  - **5 seconds of rest interval** (`state = false`)  
+- This loop continues for **10 full cycles**.  
+- After the 10th cycle, the display scrolls the word `FINISH` from right to left.  
 
----
+### 🔹 Motor1 Switch Control
 
-## ⏲️ Cycle Timing
+- Pressing the **momentary switch (D7)** triggers Motor1 (IN1/IN2) and the 13-pin LED for **10 seconds**.  
+- If the switch is pressed again during the 10-second operation, the timer **resets to 10 seconds from that moment**.  
+- **During the 5-second interval phase**, the Motor1 timer is **cancelled** and cannot run. After the interval, the switch can be pressed again for a valid 10-second operation.
 
-- **Interval phase (state = false)**: `t = 5` seconds  
-- **Motor ON phase (state = true)**: `t = 40` seconds  
-- **One full cycle** = **5s interval** + **40s motor run** = **45 seconds total**  
-- The system repeats for **10 cycles** → about **450 seconds (~7.5 minutes)** of operation before stopping.  
+### 🔹 Rotating '0' Animation on 7-Segment Display
 
-You can adjust these timings by modifying the `t` values in the code or by scaling with `speedFactor`.
-
----
+- While Motor1 is running, the program animates **the '0' digit corresponding to the cycle number** by turning off its segments sequentially:  
+  - **Cycle 0:** Ten's place '0' rotates  
+  - **Cycle 1–9:** Ten's place '0' rotates  
+  - **Cycle 10:** One's place '0' rotates  
+- The animation updates every **200 ms**, giving a spinning effect.
 
 ## 🎚️ PWM Motor Control
 
-- Motors are controlled using `analogWrite()` with adjustable power levels:  
-  - `motorPower1` and `motorPower2` (default: 255 = full speed).  
-- Direction is managed by setting one pin HIGH (PWM) and the other LOW for each motor.  
-- Motors are stopped by setting both inputs LOW.
-
----
+- Motors are controlled using `analogWrite()` for smooth speed control.  
+- Each motor has an independent PWM power level:  
+  - `motorPower1` and `motorPower2` (default: 255)  
+- You can adjust these values to fine-tune motor speed.
 
 ## 🧲 Electromagnet Behavior
 
-- Controlled via digital pins (`D8` and `D11`).  
-- Each magnet turns ON for a defined duration (`MAGNET_ON_DURATION`, default: 5000 ms).  
-- Activation is independent and timed using `millis()` (non-blocking).  
-- Automatically turns OFF after the duration expires.
-
----
+- **Electromagnet 1** activates at the start of the 45-second motor phase.  
+- **Electromagnet 2** activates at the end of the 45-second motor phase.  
+- Each electromagnet stays ON for **5 seconds**, independently.  
+- While active, the **colon `:` on the 7-segment display lights up for 1 second**.
 
 ## 📺 Display Behavior
 
-- TM1637 4-digit display shows:  
-  - **Left 2 digits** → countdown timer (seconds).  
-  - **Right 2 digits** → cycle number.  
-- When an electromagnet is activated, the display briefly updates with cycle/time values.  
-- After 10 cycles, `"FINISH"` scrolls across the display, then clears after 30 seconds.
-
----
+- The 7-segment display shows:  
+  - **Left 2 digits**: countdown seconds  
+  - **Right 2 digits**: current cycle number  
+- During Motor1's 10-second timer, the appropriate '0' digit rotates while Motor1 is active.  
+- After 10 cycles, the display scrolls `FINISH` from right to left.
 
 ## ⌚ Timing Logic
 
-- Countdown and scheduling use `millis()` (non-blocking).  
-- `t` stores the countdown in seconds.  
-- `speedFactor` can accelerate or slow down time (e.g., `2.0` = double speed).  
-- Motors and electromagnets operate concurrently without blocking delays.
-
----
+- All timing is handled using `millis()` for non-blocking countdowns.  
+- Countdown continues even while electromagnets are active.  
+- Speed can be adjusted using the `speedFactor` variable (e.g., `2.0` for double speed).  
+- Motor1's 10-second timer respects the interval phase and cancels itself if the interval starts.
 
 ## 📄 Code Features
 
 - PWM motor control via `analogWrite()`  
-- Non-blocking timing with `millis()`  
-- Independent dual electromagnet control with auto-off  
-- Countdown timer + cycle display on TM1637  
-- Scrolling `"FINISH"` message at completion  
-- Modular functions for motors, display, and magnets  
-
----
+- Non-blocking countdown using `millis()`  
+- Independent control of two electromagnets  
+- Momentary switch control for Motor1/LED  
+- Rotating '0' animation during Motor1 timer  
+- Visual feedback via colon and scrolling text  
+- Modular functions for motor control, display, and magnet timing
 
 ## 🚀 Getting Started
 
 1. Connect all components according to the pin configuration.  
-2. Upload the provided Arduino sketch.  
+2. Upload the Arduino sketch.  
 3. Power the motors and electromagnets using an external supply.  
-4. Observe countdown cycles, motor activity, and electromagnet activation.  
-
----
+4. Press the switch to test Motor1 and LED operation.  
+5. Observe countdown cycles, Motor2 operation, electromagnet activation, and '0' rotation during Motor1 timer.
 
 ## 🛠️ Customization Ideas
 
 - Adjust `motorPower1` and `motorPower2` for speed tuning.  
-- Change `MAGNET_ON_DURATION` for longer/shorter magnet activation.  
-- Add a buzzer or sound feedback during electromagnet ON/OFF events.  
-- Use buttons or sensors to dynamically adjust timing or reset cycles.  
-- Replace L298N with MOSFET-based drivers for higher efficiency.  
-
----
+- Adjust `ROTATE_INTERVAL` for faster or slower '0' rotation.  
+- Add buzzer or sound feedback during electromagnet activation or Motor1 operation.  
+- Display additional messages or animations after `FINISH`.
 
 ## 📜 License
 
 This project is licensed under the MIT License.  
-See the [LICENSE](LICENSE) file for details.  
+See the [LICENSE](LICENSE) file for details.

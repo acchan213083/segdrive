@@ -24,47 +24,40 @@ SOFTWARE.
 
 #include <TM1637Display.h>
 
-// Motor and device pin definitions
-#define IN1 5           // Motor 1 input 1 (controlled by switch)
-#define IN2 6           // Motor 1 input 2 (controlled by switch)
-#define IN3 9           // Motor 2 input 1 (PWM motor)
-#define IN4 10          // Motor 2 input 2
-#define CLK 2           // TM1637 clock pin
-#define DIO 3           // TM1637 data pin
-#define LED 13          // Indicator LED for motor 2
+#define IN1 5
+#define IN2 6
+#define IN3 9
+#define IN4 10
+#define CLK 2
+#define DIO 3
+#define LED 13
 #define electromagnet1 8
 #define electromagnet2 11
-#define SWITCH_PIN 7    // Input pin for momentary switch
+#define SWITCH_PIN 7
 
 TM1637Display display(CLK, DIO);
 
-// Timing constants
-const unsigned long MAGNET_ON_DURATION = 5000;  // Electromagnet active duration (ms)
-const unsigned long MOTOR_ON_DURATION = 10000;  // Motor 1 active duration after switch press (ms)
+const unsigned long MAGNET_ON_DURATION = 5000;
+const unsigned long MOTOR_ON_DURATION = 10000;
 
-// Program state variables
-bool state = false;      // Motor 2 state flag
-int t = 5;               // Countdown seconds for display
-int cycle = 0;           // Cycle counter
-float speedFactor = 1.0; // Speed factor for countdown timing
+bool state = false; // Motor2 running state
+int t = 5;
+int cycle = 0;
+float speedFactor = 1.0;
 
-unsigned long lastTick = 0;  // Last update timestamp
+unsigned long lastTick = 0;
 
-// Electromagnet control variables
 bool magnet1Active = false;
 bool magnet2Active = false;
 unsigned long magnet1Start = 0;
 unsigned long magnet2Start = 0;
 
-// Motor 1 control variables (switch-controlled)
 bool motorActive = false;
 unsigned long motorStartTime = 0;
 
-// Motor 2 PWM power levels
-int motorPower1 = 255;
+int motorPower1 = 255; // Motor2 PWM
 int motorPower2 = 255;
 
-// 7-segment custom character definitions
 const uint8_t CHAR_F     = 0b01110001;
 const uint8_t CHAR_I     = 0b00010000;
 const uint8_t CHAR_N     = 0b01010100;
@@ -72,99 +65,139 @@ const uint8_t CHAR_S     = 0b01101101;
 const uint8_t CHAR_H     = 0b01110100;
 const uint8_t CHAR_BLANK = 0x00;
 
+// 7-segment 0 definition
+const uint8_t SEG_0 = 0b00111111;
+// Rotation animation: turn off one segment at a time (a-f)
+const uint8_t SEG_ROTATE[6] = {
+  0b00111110, // off a
+  0b00111101, // off b
+  0b00111011, // off c
+  0b00110111, // off d
+  0b00101111, // off e
+  0b00011111  // off f
+};
+
+unsigned long lastRotate = 0;
+int rotateIndex = 0;
+const unsigned long ROTATE_INTERVAL = 200;
+
 void setup() {
   Serial.begin(9600);
 
-  // Initialize motor pins
   pinMode(IN1, OUTPUT);
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
-
-  // Initialize other outputs
   pinMode(LED, OUTPUT);
   pinMode(electromagnet1, OUTPUT);
   pinMode(electromagnet2, OUTPUT);
-
-  // Initialize switch input with pull-up resistor
   pinMode(SWITCH_PIN, INPUT_PULLUP);
 
-  // Ensure all devices are off initially
+  digitalWrite(IN1, 0);
+  digitalWrite(IN2, 0);
+  digitalWrite(IN3, 0);
+  digitalWrite(IN4, 0);
+  digitalWrite(LED, LOW);
   digitalWrite(electromagnet1, LOW);
   digitalWrite(electromagnet2, LOW);
 
-  // Initialize display
   display.setBrightness(7);
   showTimeAndCycle(t, cycle);
-
   lastTick = millis();
 }
 
 void loop() {
   unsigned long now = millis();
 
-  // ----- Switch-controlled motor 1 -----
-  // If the switch is pressed and motor is inactive, start motor
-  if (digitalRead(SWITCH_PIN) == LOW && !motorActive) {
+  // ----- Motor1/LED handling -----
+  if (state && digitalRead(SWITCH_PIN) == LOW) {
     motorActive = true;
     motorStartTime = now;
     analogWrite(IN1, 255);
     analogWrite(IN2, 0);
-    Serial.println("Motor (IN1/IN2) ON for 10s");
+    digitalWrite(LED, HIGH);
+    Serial.println("Motor1/LED ON for 10s");
   }
 
-  // Stop motor 1 after 10 seconds
-  if (motorActive && now - motorStartTime >= MOTOR_ON_DURATION) {
+  if (motorActive && (!state || now - motorStartTime >= MOTOR_ON_DURATION)) {
     motorActive = false;
     analogWrite(IN1, 0);
     analogWrite(IN2, 0);
-    Serial.println("Motor (IN1/IN2) OFF");
+    digitalWrite(LED, LOW);
+    Serial.println("Motor1/LED OFF");
   }
 
-  // ----- Original loop behavior for motor 2 and cycle timing -----
+  // ----- 0 rotation animation -----
+  if (motorActive) {
+    if (now - lastRotate >= ROTATE_INTERVAL) {
+      lastRotate = now;
+      rotateIndex = (rotateIndex + 1) % 6;
+
+      uint8_t digits[4];
+      digits[0] = display.encodeDigit((t / 10) % 10);
+      digits[1] = display.encodeDigit(t % 10);
+      digits[2] = display.encodeDigit((cycle / 10) % 10);
+      digits[3] = display.encodeDigit(cycle % 10);
+
+      int targetDigit = 0;
+      if (cycle == 0) targetDigit = 0;          // cycle0: ten's place
+      else if (cycle >= 1 && cycle <= 9) targetDigit = 2; // 1-9: ten's place
+      else if (cycle == 10) targetDigit = 3;    // 10: one's place
+
+      if (digits[targetDigit] == SEG_0) {
+        digits[targetDigit] = SEG_ROTATE[rotateIndex];
+      }
+
+      display.setSegments(digits);
+    }
+  }
+
+  // ----- Original Motor2 & Electromagnet logic -----
   if (now - lastTick >= (unsigned long)(1000 / speedFactor)) {
     lastTick = now;
     t -= 1;
     showTimeAndCycle(t, cycle);
 
     if (t == 0) {
-      if (state == true) {
+      if (state) {
         if (cycle >= 10) {
           finishScroll();
-          while (true); // Halt program after finishing cycles
+          while (true);
         } else {
           activateMagnet2();
-          state = false;
+          state = false; // interval
           t = 5;
+          if (motorActive) { // cancel Motor1 timer
+            motorActive = false;
+            analogWrite(IN1, 0);
+            analogWrite(IN2, 0);
+            digitalWrite(LED, LOW);
+            Serial.println("Motor1/LED OFF due to interval");
+          }
         }
       } else {
         activateMagnet1();
         cycle += 1;
         state = true;
-        t = 40;
+        t = 40; // Motor2 duration
       }
     }
   }
 
-  // Drive motor 2 and update electromagnets
   driveSecondMotor();
   updateMagnets(now);
 }
 
-// Control motor 2 (IN3/IN4) based on state
 void driveSecondMotor() {
   if (state) {
     analogWrite(IN3, motorPower1);
     analogWrite(IN4, 0);
-    digitalWrite(LED, HIGH);
   } else {
     analogWrite(IN3, 0);
     analogWrite(IN4, 0);
-    digitalWrite(LED, LOW);
   }
 }
 
-// Update 7-segment display with countdown seconds and cycle number
 void showTimeAndCycle(int seconds, int cycle) {
   uint8_t digits[] = {
     display.encodeDigit((seconds / 10) % 10),
@@ -175,29 +208,24 @@ void showTimeAndCycle(int seconds, int cycle) {
   display.setSegments(digits);
 }
 
-// Activate electromagnet 1
 void activateMagnet1() {
   Serial.println("Magnet1 ON");
   digitalWrite(electromagnet1, HIGH);
   magnet1Active = true;
   magnet1Start = millis();
-
   int combined = t * 100 + cycle;
-  display.showNumberDecEx(combined, 0x40, true); // Show colon while magnet is active
+  display.showNumberDecEx(combined, 0x40, true);
 }
 
-// Activate electromagnet 2
 void activateMagnet2() {
   Serial.println("Magnet2 ON");
   digitalWrite(electromagnet2, HIGH);
   magnet2Active = true;
   magnet2Start = millis();
-
   int combined = t * 100 + cycle;
-  display.showNumberDecEx(combined, 0x40, true); // Show colon while magnet is active
+  display.showNumberDecEx(combined, 0x40, true);
 }
 
-// Update electromagnet status based on elapsed time
 void updateMagnets(unsigned long now) {
   if (magnet1Active && now - magnet1Start >= MAGNET_ON_DURATION) {
     Serial.println("Magnet1 OFF");
@@ -211,7 +239,6 @@ void updateMagnets(unsigned long now) {
   }
 }
 
-// Scroll "FINISH" on the 7-segment display and turn off all devices
 void finishScroll() {
   const uint8_t message[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_I, CHAR_S, CHAR_H };
   const int len = sizeof(message);
@@ -224,13 +251,12 @@ void finishScroll() {
       (i < len)               ? message[i]     : CHAR_BLANK
     };
     display.setSegments(frame);
-    delay(300); // Scroll speed
+    delay(300);
   }
 
   uint8_t final[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_BLANK };
   display.setSegments(final);
 
-  // Stop all motors and electromagnets
   analogWrite(IN1, 0);
   analogWrite(IN2, 0);
   analogWrite(IN3, 0);
@@ -239,6 +265,6 @@ void finishScroll() {
   digitalWrite(electromagnet1, LOW);
   digitalWrite(electromagnet2, LOW);
 
-  delay(30000); // Wait 30 seconds before clearing display
+  delay(30000);
   display.clear();
 }
