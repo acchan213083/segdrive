@@ -27,8 +27,8 @@ bool magnet2Active = false;
 unsigned long magnet1Start = 0;
 unsigned long magnet2Start = 0;
 
-int motorPower1 = 180;
-int motorPower2 = 180;
+int motorPower1 = 255;
+int motorPower2 = 255;
 
 const uint8_t CHAR_F     = 0b01110001;
 const uint8_t CHAR_I     = 0b00010000;
@@ -78,7 +78,7 @@ void loop() {
         activateMagnet1();
         cycle += 1;
         state = true;
-        t = 45;
+        t = 40;
       }
     }
   }
@@ -166,6 +166,7 @@ void finishScroll() {
   uint8_t final[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_BLANK };
   display.setSegments(final);
 
+  // モータと電磁石を停止
   analogWrite(IN1, 0);
   analogWrite(IN2, 0);
   analogWrite(IN3, 0);
@@ -173,4 +174,8 @@ void finishScroll() {
   digitalWrite(LED, LOW);
   digitalWrite(electromagnet1, LOW);
   digitalWrite(electromagnet2, LOW);
+
+  // 30秒待機してディスプレイを消灯
+  delay(30000); // 30秒（30000ミリ秒）
+  display.clear(); // ディスプレイ消灯
 }
