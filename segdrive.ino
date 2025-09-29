@@ -1,27 +1,3 @@
-/*
-MIT License
-
-Copyright (c) 2025 Namabayashi
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-*/
-
 #include <TM1637Display.h>
 
 #define IN1 5
@@ -34,13 +10,15 @@ SOFTWARE.
 #define electromagnet1 8
 #define electromagnet2 11
 #define SWITCH_PIN 7
+#define MOTOR1_STATUS_PIN 4
+#define MOTOR2_STATUS_PIN 12
 
 TM1637Display display(CLK, DIO);
 
 const unsigned long MAGNET_ON_DURATION = 5000;
 const unsigned long MOTOR_ON_DURATION = 10000;
 
-bool state = false; // Motor2 running state
+bool state = false;
 int t = 5;
 int cycle = 0;
 float speedFactor = 1.0;
@@ -55,7 +33,7 @@ unsigned long magnet2Start = 0;
 bool motorActive = false;
 unsigned long motorStartTime = 0;
 
-int motorPower1 = 255; // Motor2 PWM
+int motorPower1 = 255;
 int motorPower2 = 255;
 
 const uint8_t CHAR_F     = 0b01110001;
@@ -65,16 +43,10 @@ const uint8_t CHAR_S     = 0b01101101;
 const uint8_t CHAR_H     = 0b01110100;
 const uint8_t CHAR_BLANK = 0x00;
 
-// 7-segment 0 definition
 const uint8_t SEG_0 = 0b00111111;
-// Rotation animation: turn off one segment at a time (a-f)
 const uint8_t SEG_ROTATE[6] = {
-  0b00111110, // off a
-  0b00111101, // off b
-  0b00111011, // off c
-  0b00110111, // off d
-  0b00101111, // off e
-  0b00011111  // off f
+  0b00111110, 0b00111101, 0b00111011,
+  0b00110111, 0b00101111, 0b00011111
 };
 
 unsigned long lastRotate = 0;
@@ -92,6 +64,8 @@ void setup() {
   pinMode(electromagnet1, OUTPUT);
   pinMode(electromagnet2, OUTPUT);
   pinMode(SWITCH_PIN, INPUT_PULLUP);
+  pinMode(MOTOR1_STATUS_PIN, OUTPUT);
+  pinMode(MOTOR2_STATUS_PIN, OUTPUT);
 
   digitalWrite(IN1, 0);
   digitalWrite(IN2, 0);
@@ -100,6 +74,8 @@ void setup() {
   digitalWrite(LED, LOW);
   digitalWrite(electromagnet1, LOW);
   digitalWrite(electromagnet2, LOW);
+  digitalWrite(MOTOR1_STATUS_PIN, LOW);
+  digitalWrite(MOTOR2_STATUS_PIN, LOW);
 
   display.setBrightness(7);
   showTimeAndCycle(t, cycle);
@@ -109,13 +85,13 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // ----- Motor1/LED handling -----
   if (state && digitalRead(SWITCH_PIN) == LOW) {
     motorActive = true;
     motorStartTime = now;
     analogWrite(IN1, 255);
     analogWrite(IN2, 0);
     digitalWrite(LED, HIGH);
+    digitalWrite(MOTOR1_STATUS_PIN, HIGH);
     Serial.println("Motor1/LED ON for 10s");
   }
 
@@ -124,35 +100,28 @@ void loop() {
     analogWrite(IN1, 0);
     analogWrite(IN2, 0);
     digitalWrite(LED, LOW);
+    digitalWrite(MOTOR1_STATUS_PIN, LOW);
     Serial.println("Motor1/LED OFF");
   }
 
-  // ----- 0 rotation animation -----
-  if (motorActive) {
-    if (now - lastRotate >= ROTATE_INTERVAL) {
-      lastRotate = now;
-      rotateIndex = (rotateIndex + 1) % 6;
+  if (motorActive && now - lastRotate >= ROTATE_INTERVAL) {
+    lastRotate = now;
+    rotateIndex = (rotateIndex + 1) % 6;
 
-      uint8_t digits[4];
-      digits[0] = display.encodeDigit((t / 10) % 10);
-      digits[1] = display.encodeDigit(t % 10);
-      digits[2] = display.encodeDigit((cycle / 10) % 10);
-      digits[3] = display.encodeDigit(cycle % 10);
+    uint8_t digits[4];
+    digits[0] = display.encodeDigit((t / 10) % 10);
+    digits[1] = display.encodeDigit(t % 10);
+    digits[2] = display.encodeDigit((cycle / 10) % 10);
+    digits[3] = display.encodeDigit(cycle % 10);
 
-      int targetDigit = 0;
-      if (cycle == 0) targetDigit = 0;          // cycle0: ten's place
-      else if (cycle >= 1 && cycle <= 9) targetDigit = 2; // 1-9: ten's place
-      else if (cycle == 10) targetDigit = 3;    // 10: one's place
-
-      if (digits[targetDigit] == SEG_0) {
-        digits[targetDigit] = SEG_ROTATE[rotateIndex];
-      }
-
-      display.setSegments(digits);
+    int targetDigit = (cycle == 10) ? 3 : (cycle >= 1 ? 2 : 0);
+    if (digits[targetDigit] == SEG_0) {
+      digits[targetDigit] = SEG_ROTATE[rotateIndex];
     }
+
+    display.setSegments(digits);
   }
 
-  // ----- Original Motor2 & Electromagnet logic -----
   if (now - lastTick >= (unsigned long)(1000 / speedFactor)) {
     lastTick = now;
     t -= 1;
@@ -165,13 +134,14 @@ void loop() {
           while (true);
         } else {
           activateMagnet2();
-          state = false; // interval
+          state = false;
           t = 5;
-          if (motorActive) { // cancel Motor1 timer
+          if (motorActive) {
             motorActive = false;
             analogWrite(IN1, 0);
             analogWrite(IN2, 0);
             digitalWrite(LED, LOW);
+            digitalWrite(MOTOR1_STATUS_PIN, LOW);
             Serial.println("Motor1/LED OFF due to interval");
           }
         }
@@ -179,7 +149,7 @@ void loop() {
         activateMagnet1();
         cycle += 1;
         state = true;
-        t = 40; // Motor2 duration
+        t = 40;
       }
     }
   }
@@ -192,9 +162,11 @@ void driveSecondMotor() {
   if (state) {
     analogWrite(IN3, motorPower1);
     analogWrite(IN4, 0);
+    digitalWrite(MOTOR2_STATUS_PIN, HIGH);
   } else {
     analogWrite(IN3, 0);
     analogWrite(IN4, 0);
+    digitalWrite(MOTOR2_STATUS_PIN, LOW);
   }
 }
 
@@ -264,6 +236,8 @@ void finishScroll() {
   digitalWrite(LED, LOW);
   digitalWrite(electromagnet1, LOW);
   digitalWrite(electromagnet2, LOW);
+  digitalWrite(MOTOR1_STATUS_PIN, LOW);
+  digitalWrite(MOTOR2_STATUS_PIN, LOW);
 
   delay(30000);
   display.clear();

@@ -10,24 +10,29 @@ This project controls two DC motors (RE-280RA) via PWM signals and an L298 motor
 - KEYESTUDIO Electromagnet Modules ×2  
 - TM1637 4-digit 7-segment LED display  
 - Push Button Switch  
-- External power supply (recommended for motors and electromagnets)
+- External power supply (recommended for motors and electromagnets)  
+- Optional: Relay modules connected to D4 and D12 for motor status indication
 
 ## 📍 Pin Configuration
 
-| Component           | Arduino Pin |
-|--------------------|-------------|
-| Motor1 IN1 (PWM)   | D5          |
-| Motor1 IN2 (PWM)   | D6          |
-| Motor2 IN3 (PWM)   | D9          |
-| Motor2 IN4 (PWM)   | D10         |
-| TM1637 CLK         | D2          |
-| TM1637 DIO         | D3          |
-| LED Indicator      | D13         |
-| Electromagnet 1    | D8          |
-| Electromagnet 2    | D11         |
-| Momentary Switch   | D7          |
+| Component                   | Arduino Pin |
+|----------------------------|-------------|
+| Motor1 IN1 (PWM)           | D5          |
+| Motor1 IN2 (PWM)           | D6          |
+| Motor2 IN3 (PWM)           | D9          |
+| Motor2 IN4 (PWM)           | D10         |
+| TM1637 CLK                 | D2          |
+| TM1637 DIO                 | D3          |
+| LED Indicator              | D13         |
+| Electromagnet 1            | D8          |
+| Electromagnet 2            | D11         |
+| Momentary Switch           | D7          |
+| Motor1 Status Output (Relay)| D4          |
+| Motor2 Status Output (Relay)| D12         |
 
-> ⚠️ Note: IN1–IN4 must be connected to PWM-capable pins on the Arduino Uno (3, 5, 6, 9, 10, 11). The switch uses INPUT_PULLUP configuration.
+> ⚠️ Note: IN1–IN4 must be connected to PWM-capable pins on the Arduino Uno (3, 5, 6, 9, 10, 11).  
+> D4 and D12 are digital output pins that go HIGH when Motor1 or Motor2 is running, respectively. These can be used to drive relay modules for external devices.  
+> The switch uses INPUT_PULLUP configuration.
 
 ## ⏱️ Operation Overview
 
@@ -42,7 +47,13 @@ This project controls two DC motors (RE-280RA) via PWM signals and an L298 motor
 
 - Pressing the **momentary switch (D7)** triggers Motor1 (IN1/IN2) and the 13-pin LED for **10 seconds**.  
 - If the switch is pressed again during the 10-second operation, the timer **resets to 10 seconds from that moment**.  
-- **During the 5-second interval phase**, the Motor1 timer is **cancelled** and cannot run. After the interval, the switch can be pressed again for a valid 10-second operation.
+- **During the 5-second interval phase**, the Motor1 timer is **cancelled** and cannot run. After the interval, the switch can be pressed again for a valid 10-second operation.  
+- While Motor1 is active, **D4 goes HIGH**, allowing relay-based control of external devices.
+
+### 🔹 Motor2 Operation
+
+- Motor2 runs automatically during each 45-second active phase.  
+- While Motor2 is active (`state = true`), **D12 goes HIGH**, enabling relay-based control if needed.
 
 ### 🔹 Rotating '0' Animation on 7-Segment Display
 
@@ -89,6 +100,7 @@ This project controls two DC motors (RE-280RA) via PWM signals and an L298 motor
 - Momentary switch control for Motor1/LED  
 - Rotating '0' animation during Motor1 timer  
 - Visual feedback via colon and scrolling text  
+- Relay-compatible status outputs for Motor1 and Motor2  
 - Modular functions for motor control, display, and magnet timing
 
 ## 🚀 Getting Started
@@ -97,14 +109,16 @@ This project controls two DC motors (RE-280RA) via PWM signals and an L298 motor
 2. Upload the Arduino sketch.  
 3. Power the motors and electromagnets using an external supply.  
 4. Press the switch to test Motor1 and LED operation.  
-5. Observe countdown cycles, Motor2 operation, electromagnet activation, and '0' rotation during Motor1 timer.
+5. Observe countdown cycles, Motor2 operation, electromagnet activation, and '0' rotation during Motor1 timer.  
+6. Use D4 and D12 to control relays or monitor motor activity externally.
 
 ## 🛠️ Customization Ideas
 
 - Adjust `motorPower1` and `motorPower2` for speed tuning.  
 - Adjust `ROTATE_INTERVAL` for faster or slower '0' rotation.  
 - Add buzzer or sound feedback during electromagnet activation or Motor1 operation.  
-- Display additional messages or animations after `FINISH`.
+- Display additional messages or animations after `FINISH`.  
+- Use D4/D12 to trigger external devices like fans, lights, or alarms via relays.
 
 ## 📜 License
 
