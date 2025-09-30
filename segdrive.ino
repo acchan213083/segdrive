@@ -1,17 +1,42 @@
+/*
+MIT License
+
+Copyright (c) 2025 Namabayashi
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+*/
+
+
 #include <TM1637Display.h>
 
-#define IN1 5
-#define IN2 6
-#define IN3 9
-#define IN4 10
-#define CLK 2
-#define DIO 3
-#define LED 13
-#define electromagnet1 8
-#define electromagnet2 11
-#define SWITCH_PIN 7
-#define MOTOR1_STATUS_PIN 4
-#define MOTOR2_STATUS_PIN 12
+// Pin definitions
+#define ELECTROMAGNET1_PIN 2     // Electromagnet 1 control
+#define ELECTROMAGNET2_PIN 3     // Electromagnet 2 control
+#define CLK 4                    // TM1637 clock pin
+#define DIO 5                    // TM1637 data pin
+#define SWITCH1_PIN 6            // Motor1 trigger switch
+#define SWITCH2_PIN 7            // Motor2 stop counter switch
+#define MOTOR1_RELAY_PIN 8       // Motor1 relay output
+#define MOTOR2_RELAY_PIN 9       // Motor2 relay output
+#define MOTOR2_IN1 10            // Motor2 PWM IN1
+#define MOTOR2_IN2 11            // Motor2 PWM IN2
+#define LED 13                   // Status LED
 
 TM1637Display display(CLK, DIO);
 
@@ -22,7 +47,6 @@ bool state = false;
 int t = 5;
 int cycle = 0;
 float speedFactor = 1.0;
-
 unsigned long lastTick = 0;
 
 bool magnet1Active = false;
@@ -30,10 +54,12 @@ bool magnet2Active = false;
 unsigned long magnet1Start = 0;
 unsigned long magnet2Start = 0;
 
-bool motorActive = false;
-unsigned long motorStartTime = 0;
+bool motor1Active = false;
+unsigned long motor1StartTime = 0;
 
-int motorPower1 = 255;
+bool motor2Running = false;
+int motor2StopCount = 0;
+
 int motorPower2 = 255;
 
 const uint8_t CHAR_F     = 0b01110001;
@@ -56,26 +82,23 @@ const unsigned long ROTATE_INTERVAL = 200;
 void setup() {
   Serial.begin(9600);
 
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
+  pinMode(ELECTROMAGNET1_PIN, OUTPUT);
+  pinMode(ELECTROMAGNET2_PIN, OUTPUT);
+  pinMode(MOTOR2_IN1, OUTPUT);
+  pinMode(MOTOR2_IN2, OUTPUT);
   pinMode(LED, OUTPUT);
-  pinMode(electromagnet1, OUTPUT);
-  pinMode(electromagnet2, OUTPUT);
-  pinMode(SWITCH_PIN, INPUT_PULLUP);
-  pinMode(MOTOR1_STATUS_PIN, OUTPUT);
-  pinMode(MOTOR2_STATUS_PIN, OUTPUT);
+  pinMode(SWITCH1_PIN, INPUT_PULLUP);
+  pinMode(SWITCH2_PIN, INPUT_PULLUP);
+  pinMode(MOTOR1_RELAY_PIN, OUTPUT);
+  pinMode(MOTOR2_RELAY_PIN, OUTPUT);
 
-  digitalWrite(IN1, 0);
-  digitalWrite(IN2, 0);
-  digitalWrite(IN3, 0);
-  digitalWrite(IN4, 0);
+  digitalWrite(ELECTROMAGNET1_PIN, LOW);
+  digitalWrite(ELECTROMAGNET2_PIN, LOW);
+  digitalWrite(MOTOR2_IN1, LOW);
+  digitalWrite(MOTOR2_IN2, LOW);
   digitalWrite(LED, LOW);
-  digitalWrite(electromagnet1, LOW);
-  digitalWrite(electromagnet2, LOW);
-  digitalWrite(MOTOR1_STATUS_PIN, LOW);
-  digitalWrite(MOTOR2_STATUS_PIN, LOW);
+  digitalWrite(MOTOR1_RELAY_PIN, LOW);
+  digitalWrite(MOTOR2_RELAY_PIN, LOW);
 
   display.setBrightness(7);
   showTimeAndCycle(t, cycle);
@@ -85,26 +108,34 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  if (state && digitalRead(SWITCH_PIN) == LOW) {
-    motorActive = true;
-    motorStartTime = now;
-    analogWrite(IN1, 255);
-    analogWrite(IN2, 0);
+  if (state && digitalRead(SWITCH1_PIN) == LOW) {
+    motor1Active = true;
+    motor1StartTime = now;
     digitalWrite(LED, HIGH);
-    digitalWrite(MOTOR1_STATUS_PIN, HIGH);
-    Serial.println("Motor1/LED ON for 10s");
+    digitalWrite(MOTOR1_RELAY_PIN, HIGH);
+    Serial.println("Motor1 Relay/LED ON for 10s");
   }
 
-  if (motorActive && (!state || now - motorStartTime >= MOTOR_ON_DURATION)) {
-    motorActive = false;
-    analogWrite(IN1, 0);
-    analogWrite(IN2, 0);
+  if (motor1Active && (!state || now - motor1StartTime >= MOTOR_ON_DURATION)) {
+    motor1Active = false;
     digitalWrite(LED, LOW);
-    digitalWrite(MOTOR1_STATUS_PIN, LOW);
-    Serial.println("Motor1/LED OFF");
+    digitalWrite(MOTOR1_RELAY_PIN, LOW);
+    Serial.println("Motor1 Relay/LED OFF");
   }
 
-  if (motorActive && now - lastRotate >= ROTATE_INTERVAL) {
+  if (motor2Running && digitalRead(SWITCH2_PIN) == LOW) {
+    motor2StopCount++;
+    Serial.print("Motor2 switch pressed: ");
+    Serial.println(motor2StopCount);
+    delay(300); // debounce
+
+    if (motor2StopCount >= 5) {
+      motor2Running = false;
+      Serial.println("Motor2 stopped after 5 presses");
+    }
+  }
+
+  if (motor1Active && now - lastRotate >= ROTATE_INTERVAL) {
     lastRotate = now;
     rotateIndex = (rotateIndex + 1) % 6;
 
@@ -136,13 +167,11 @@ void loop() {
           activateMagnet2();
           state = false;
           t = 5;
-          if (motorActive) {
-            motorActive = false;
-            analogWrite(IN1, 0);
-            analogWrite(IN2, 0);
+          if (motor1Active) {
+            motor1Active = false;
             digitalWrite(LED, LOW);
-            digitalWrite(MOTOR1_STATUS_PIN, LOW);
-            Serial.println("Motor1/LED OFF due to interval");
+            digitalWrite(MOTOR1_RELAY_PIN, LOW);
+            Serial.println("Motor1 Relay/LED OFF due to interval");
           }
         }
       } else {
@@ -150,6 +179,10 @@ void loop() {
         cycle += 1;
         state = true;
         t = 40;
+
+        motor2Running = true;
+        motor2StopCount = 0;
+        Serial.println("Motor2 started at cycle begin");
       }
     }
   }
@@ -159,14 +192,14 @@ void loop() {
 }
 
 void driveSecondMotor() {
-  if (state) {
-    analogWrite(IN3, motorPower1);
-    analogWrite(IN4, 0);
-    digitalWrite(MOTOR2_STATUS_PIN, HIGH);
+  if (motor2Running) {
+    analogWrite(MOTOR2_IN1, motorPower2);
+    analogWrite(MOTOR2_IN2, 0);
+    digitalWrite(MOTOR2_RELAY_PIN, HIGH);
   } else {
-    analogWrite(IN3, 0);
-    analogWrite(IN4, 0);
-    digitalWrite(MOTOR2_STATUS_PIN, LOW);
+    analogWrite(MOTOR2_IN1, 0);
+    analogWrite(MOTOR2_IN2, 0);
+    digitalWrite(MOTOR2_RELAY_PIN, LOW);
   }
 }
 
@@ -182,7 +215,7 @@ void showTimeAndCycle(int seconds, int cycle) {
 
 void activateMagnet1() {
   Serial.println("Magnet1 ON");
-  digitalWrite(electromagnet1, HIGH);
+  digitalWrite(ELECTROMAGNET1_PIN, HIGH);
   magnet1Active = true;
   magnet1Start = millis();
   int combined = t * 100 + cycle;
@@ -191,7 +224,7 @@ void activateMagnet1() {
 
 void activateMagnet2() {
   Serial.println("Magnet2 ON");
-  digitalWrite(electromagnet2, HIGH);
+  digitalWrite(ELECTROMAGNET2_PIN, HIGH);
   magnet2Active = true;
   magnet2Start = millis();
   int combined = t * 100 + cycle;
@@ -201,20 +234,22 @@ void activateMagnet2() {
 void updateMagnets(unsigned long now) {
   if (magnet1Active && now - magnet1Start >= MAGNET_ON_DURATION) {
     Serial.println("Magnet1 OFF");
-    digitalWrite(electromagnet1, LOW);
+    digitalWrite(ELECTROMAGNET1_PIN, LOW);
     magnet1Active = false;
   }
   if (magnet2Active && now - magnet2Start >= MAGNET_ON_DURATION) {
     Serial.println("Magnet2 OFF");
-    digitalWrite(electromagnet2, LOW);
+    digitalWrite(ELECTROMAGNET2_PIN, LOW);
     magnet2Active = false;
   }
 }
 
 void finishScroll() {
+  // Message to scroll: "FINISH"
   const uint8_t message[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_I, CHAR_S, CHAR_H };
   const int len = sizeof(message);
 
+  // Scroll the message across the 4-digit display
   for (int i = 0; i <= len + 3; i++) {
     uint8_t frame[4] = {
       (i >= 3 && i - 3 < len) ? message[i - 3] : CHAR_BLANK,
@@ -226,19 +261,22 @@ void finishScroll() {
     delay(300);
   }
 
+  // Display final static message: "FIN "
   uint8_t final[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_BLANK };
   display.setSegments(final);
 
-  analogWrite(IN1, 0);
-  analogWrite(IN2, 0);
-  analogWrite(IN3, 0);
-  analogWrite(IN4, 0);
-  digitalWrite(LED, LOW);
-  digitalWrite(electromagnet1, LOW);
-  digitalWrite(electromagnet2, LOW);
-  digitalWrite(MOTOR1_STATUS_PIN, LOW);
-  digitalWrite(MOTOR2_STATUS_PIN, LOW);
+  // Stop Motor2 PWM
+  analogWrite(MOTOR2_IN1, 0);
+  analogWrite(MOTOR2_IN2, 0);
 
+  // Turn off all outputs
+  digitalWrite(LED, LOW);
+  digitalWrite(ELECTROMAGNET1_PIN, LOW);
+  digitalWrite(ELECTROMAGNET2_PIN, LOW);
+  digitalWrite(MOTOR1_RELAY_PIN, LOW);
+  digitalWrite(MOTOR2_RELAY_PIN, LOW);
+
+  // Wait 30 seconds before clearing display
   delay(30000);
   display.clear();
 }
