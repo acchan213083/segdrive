@@ -22,234 +22,292 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
+/*
+Arduino Timing Controller Full Explanation:
+
+- Single electromagnet: OFF for 5 seconds at cycle start, then ON
+- Motor1: relay-driven, triggered by momentary switch for 10 seconds
+- Motor2: PWM-controlled, stopped via piezo sensor after 5 hits
+- LED: indicates Motor1 active or piezo detection
+- TM1637 4-digit display shows countdown (left 2 digits) and cycle count (right 2 digits)
+- System runs 10 cycles, then scrolls "FIN" on display and stops
+- Start button (4-terminal) initiates system
+*/
 
 #include <TM1637Display.h>
 
-// Pin definitions
-#define ELECTROMAGNET1_PIN 2     // Electromagnet 1 control
-#define ELECTROMAGNET2_PIN 3     // Electromagnet 2 control
-#define CLK 4                    // TM1637 clock pin
-#define DIO 5                    // TM1637 data pin
-#define SWITCH1_PIN 6            // Motor1 trigger switch
-#define SWITCH2_PIN 7            // Motor2 stop counter switch
-#define MOTOR1_RELAY_PIN 8       // Motor1 relay output
-#define MOTOR2_RELAY_PIN 9       // Motor2 relay output
-#define MOTOR2_IN1 10            // Motor2 PWM IN1
-#define MOTOR2_IN2 11            // Motor2 PWM IN2
-#define LED 13                   // Status LED
+// ============================
+// Pin Configuration
+// ============================
+#define ELECTROMAGNET_PIN 2       // Electromagnet output
+#define CLK 4                     // TM1637 Clock
+#define DIO 5                     // TM1637 Data
+#define SWITCH_START 6            // Start button (4-terminal)
+#define SWITCH1_PIN 7             // Motor1 trigger button
+#define SWITCH2_PIN 8             // Piezo sensor for Motor2 stop
+#define MOTOR1_RELAY_PIN 9        // Motor1 relay control
+#define MOTOR2_RELAY_PIN 10       // Motor2 relay control
+#define MOTOR2_IN1 11             // Motor2 PWM IN1
+#define MOTOR2_IN2 12             // Motor2 PWM IN2
+#define LED 13                    // Status LED (Motor1 / Piezo detection)
 
+// Create display object
 TM1637Display display(CLK, DIO);
 
-const unsigned long MAGNET_ON_DURATION = 5000;
-const unsigned long MOTOR_ON_DURATION = 10000;
+// ============================
+// Timing and Configuration Variables
+// ============================
+const unsigned long MAGNET_OFF_DURATION     = 5000;    // Electromagnet OFF duration at cycle start (ms)
+const unsigned long CYCLE_TOTAL_DURATION    = 40000;   // Active phase duration per cycle (ms)
+const unsigned long MOTOR_ON_DURATION       = 10000;   // Motor1 run time (ms)
+const unsigned long MAGNET_INITIAL_INTERVAL = 5000;    // Pre-start interval before cycles begin (ms)
+const int  MOTOR2_STOP_TARGET               = 5;       // Piezo hits required to stop Motor2
+const int  MAX_CYCLES                       = 10;      // Total number of cycles
+const unsigned long PIEZO_COOLDOWN          = 200;     // Piezo debounce duration (ms)
+const int  MOTOR2_PWM_POWER                  = 255;     // Motor2 PWM level (0-255)
+const unsigned long ROTATE_INTERVAL         = 200;     // '0' rotation interval on display (ms)
 
-bool state = false;
-int t = 5;
-int cycle = 0;
-float speedFactor = 1.0;
-unsigned long lastTick = 0;
+// ============================
+// State Variables
+// ============================
+bool systemRunning       = false;             // True after start button pressed
+bool state               = false;             // false=interval, true=active phase
+int t                    = 5;                 // Countdown seconds
+int cycle                = 0;                 // Current cycle number
 
-bool magnet1Active = false;
-bool magnet2Active = false;
-unsigned long magnet1Start = 0;
-unsigned long magnet2Start = 0;
+bool magnetActive        = false;             // Flag for OFF interval
+unsigned long magnetStart = 0;                // Timestamp when electromagnet turned OFF
 
-bool motor1Active = false;
-unsigned long motor1StartTime = 0;
+bool motor1Active        = false;             // Motor1 active flag
+unsigned long motor1StartTime = 0;           // Motor1 start timestamp
 
-bool motor2Running = false;
-int motor2StopCount = 0;
+bool motor2Running       = false;             // Motor2 running flag
+int motor2StopCount      = 0;                 // Motor2 Piezo hit counter
 
-int motorPower2 = 255;
+unsigned long lastTick   = 0;                 // Timer for countdown
 
-const uint8_t CHAR_F     = 0b01110001;
-const uint8_t CHAR_I     = 0b00010000;
-const uint8_t CHAR_N     = 0b01010100;
-const uint8_t CHAR_S     = 0b01101101;
-const uint8_t CHAR_H     = 0b01110100;
-const uint8_t CHAR_BLANK = 0x00;
+int lastPiezoState       = HIGH;              // Last piezo sensor state
+unsigned long lastPiezoDetectTime = 0;        // Timestamp for last Piezo hit
 
-const uint8_t SEG_0 = 0b00111111;
-const uint8_t SEG_ROTATE[6] = {
-  0b00111110, 0b00111101, 0b00111011,
-  0b00110111, 0b00101111, 0b00011111
-};
-
-unsigned long lastRotate = 0;
-int rotateIndex = 0;
-const unsigned long ROTATE_INTERVAL = 200;
-
+// ============================
+// Setup
+// ============================
 void setup() {
   Serial.begin(9600);
 
-  pinMode(ELECTROMAGNET1_PIN, OUTPUT);
-  pinMode(ELECTROMAGNET2_PIN, OUTPUT);
-  pinMode(MOTOR2_IN1, OUTPUT);
-  pinMode(MOTOR2_IN2, OUTPUT);
+  // ----------------------------
+  // Set pin modes
+  // ----------------------------
+  pinMode(ELECTROMAGNET_PIN, OUTPUT);
   pinMode(LED, OUTPUT);
-  pinMode(SWITCH1_PIN, INPUT_PULLUP);
-  pinMode(SWITCH2_PIN, INPUT_PULLUP);
   pinMode(MOTOR1_RELAY_PIN, OUTPUT);
   pinMode(MOTOR2_RELAY_PIN, OUTPUT);
+  pinMode(MOTOR2_IN1, OUTPUT);
+  pinMode(MOTOR2_IN2, OUTPUT);
 
-  digitalWrite(ELECTROMAGNET1_PIN, LOW);
-  digitalWrite(ELECTROMAGNET2_PIN, LOW);
-  digitalWrite(MOTOR2_IN1, LOW);
-  digitalWrite(MOTOR2_IN2, LOW);
+  pinMode(SWITCH_START, INPUT_PULLUP); // Start button with internal pull-up
+  pinMode(SWITCH1_PIN, INPUT_PULLUP);  // Motor1 button
+  pinMode(SWITCH2_PIN, INPUT);         // Piezo sensor (no pull-up)
+
+  // ----------------------------
+  // Initialize outputs
+  // ----------------------------
+  digitalWrite(ELECTROMAGNET_PIN, HIGH);  // Electromagnet initially ON
   digitalWrite(LED, LOW);
   digitalWrite(MOTOR1_RELAY_PIN, LOW);
   digitalWrite(MOTOR2_RELAY_PIN, LOW);
 
-  display.setBrightness(7);
+  // ----------------------------
+  // Display setup
+  // ----------------------------
+  display.setBrightness(7);  // Max brightness
   showTimeAndCycle(t, cycle);
+
   lastTick = millis();
+
+  Serial.println("Setup complete. Waiting for start button...");
 }
 
+// ============================
+// Main Loop
+// ============================
 void loop() {
   unsigned long now = millis();
 
-  if (state && digitalRead(SWITCH1_PIN) == LOW) {
-    motor1Active = true;
-    motor1StartTime = now;
-    digitalWrite(LED, HIGH);
-    digitalWrite(MOTOR1_RELAY_PIN, HIGH);
-    Serial.println("Motor1 Relay/LED ON for 10s");
-  }
-
-  if (motor1Active && (!state || now - motor1StartTime >= MOTOR_ON_DURATION)) {
-    motor1Active = false;
-    digitalWrite(LED, LOW);
-    digitalWrite(MOTOR1_RELAY_PIN, LOW);
-    Serial.println("Motor1 Relay/LED OFF");
-  }
-
-  if (motor2Running && digitalRead(SWITCH2_PIN) == LOW) {
-    motor2StopCount++;
-    Serial.print("Motor2 switch pressed: ");
-    Serial.println(motor2StopCount);
-    delay(300); // debounce
-
-    if (motor2StopCount >= 5) {
-      motor2Running = false;
-      Serial.println("Motor2 stopped after 5 presses");
+  // ----------------------------
+  // Wait for start button press
+  // ----------------------------
+  if (!systemRunning) {
+    if (digitalRead(SWITCH_START) == LOW) {
+      systemRunning = true;
+      Serial.println("Start button pressed. System starting...");
+      delay(300); // debounce
+      t = 5;
+      cycle = 0;
+      state = false;
+      display.showNumberDec(0, true);
+      delay(MAGNET_INITIAL_INTERVAL); // Pre-start interval
+    } else {
+      return; // Wait until start button pressed
     }
   }
 
-  if (motor1Active && now - lastRotate >= ROTATE_INTERVAL) {
-    lastRotate = now;
-    rotateIndex = (rotateIndex + 1) % 6;
-
-    uint8_t digits[4];
-    digits[0] = display.encodeDigit((t / 10) % 10);
-    digits[1] = display.encodeDigit(t % 10);
-    digits[2] = display.encodeDigit((cycle / 10) % 10);
-    digits[3] = display.encodeDigit(cycle % 10);
-
-    int targetDigit = (cycle == 10) ? 3 : (cycle >= 1 ? 2 : 0);
-    if (digits[targetDigit] == SEG_0) {
-      digits[targetDigit] = SEG_ROTATE[rotateIndex];
-    }
-
-    display.setSegments(digits);
-  }
-
-  if (now - lastTick >= (unsigned long)(1000 / speedFactor)) {
+  // ----------------------------
+  // Countdown logic: non-blocking
+  // ----------------------------
+  if (now - lastTick >= 1000) {
     lastTick = now;
-    t -= 1;
+    t -= 1;  // decrement seconds
     showTimeAndCycle(t, cycle);
 
-    if (t == 0) {
+    if (t <= 0) {
       if (state) {
-        if (cycle >= 10) {
-          finishScroll();
-          while (true);
+        // Active phase ended
+        if (cycle >= MAX_CYCLES) {
+          finishScroll();  // Scroll "FIN"
+          while(true);     // Stop program
         } else {
-          activateMagnet2();
           state = false;
-          t = 5;
-          if (motor1Active) {
-            motor1Active = false;
-            digitalWrite(LED, LOW);
-            digitalWrite(MOTOR1_RELAY_PIN, LOW);
-            Serial.println("Motor1 Relay/LED OFF due to interval");
-          }
+          t = 5; // interval phase
         }
       } else {
-        activateMagnet1();
+        // Interval phase ended -> start new active cycle
+        activateMagnet();   // Electromagnet OFF for 5s
         cycle += 1;
         state = true;
-        t = 40;
-
+        t = CYCLE_TOTAL_DURATION / 1000; // Active phase seconds
         motor2Running = true;
-        motor2StopCount = 0;
-        Serial.println("Motor2 started at cycle begin");
+        motor2StopCount = 0;             // Reset piezo counter
+        Serial.print("Cycle ");
+        Serial.print(cycle);
+        Serial.println(" started.");
       }
     }
   }
 
-  driveSecondMotor();
-  updateMagnets(now);
+  // ----------------------------
+  // Update actuators and sensors
+  // ----------------------------
+  updateMagnet(now);      // Electromagnet timing
+  driveSecondMotor();     // Motor2 PWM
+  updateMotor1(now);      // Motor1 control
+  checkMotor2Stop();      // Piezo detection for Motor2 stop
 }
 
-void driveSecondMotor() {
-  if (motor2Running) {
-    analogWrite(MOTOR2_IN1, motorPower2);
-    analogWrite(MOTOR2_IN2, 0);
-    digitalWrite(MOTOR2_RELAY_PIN, HIGH);
-  } else {
-    analogWrite(MOTOR2_IN1, 0);
-    analogWrite(MOTOR2_IN2, 0);
-    digitalWrite(MOTOR2_RELAY_PIN, LOW);
+// ============================
+// Electromagnet Control
+// ============================
+void activateMagnet() {
+  Serial.println("Electromagnet OFF (5 sec at cycle start)");
+  digitalWrite(ELECTROMAGNET_PIN, LOW); // Turn OFF temporarily
+  magnetActive = true;
+  magnetStart = millis();               // Record timestamp
+}
+
+void updateMagnet(unsigned long now) {
+  // Restore electromagnet after OFF duration
+  if (magnetActive && now - magnetStart >= MAGNET_OFF_DURATION) {
+    Serial.println("Electromagnet ON (restored)");
+    digitalWrite(ELECTROMAGNET_PIN, HIGH);
+    magnetActive = false;
   }
 }
 
+// ============================
+// Motor1 Control
+// ============================
+void updateMotor1(unsigned long now) {
+  // Trigger Motor1 if button pressed and active phase
+  if (state && digitalRead(SWITCH1_PIN) == LOW && !motor1Active) {
+    motor1Active = true;
+    motor1StartTime = now;
+    digitalWrite(MOTOR1_RELAY_PIN, HIGH); // Relay ON
+    digitalWrite(LED, HIGH);              // LED ON
+    Serial.println("Motor1 ON (10 sec)");
+  }
+
+  // Turn off Motor1 after duration
+  if (motor1Active && now - motor1StartTime >= MOTOR_ON_DURATION) {
+    motor1Active = false;
+    digitalWrite(MOTOR1_RELAY_PIN, LOW);
+    digitalWrite(LED, LOW);
+    Serial.println("Motor1 OFF");
+  }
+}
+
+// ============================
+// Motor2 PWM Control
+// ============================
+void driveSecondMotor() {
+  if (motor2Running) {
+    analogWrite(MOTOR2_IN1, MOTOR2_PWM_POWER);
+    analogWrite(MOTOR2_IN2, 0);
+    digitalWrite(MOTOR2_RELAY_PIN, HIGH); // Relay ON while running
+  } else {
+    analogWrite(MOTOR2_IN1, 0);
+    analogWrite(MOTOR2_IN2, 0);
+    digitalWrite(MOTOR2_RELAY_PIN, LOW);  // Relay OFF when stopped
+  }
+}
+
+// ============================
+// Piezo Sensor Detection for Motor2 Stop
+// ============================
+void checkMotor2Stop() {
+  int piezoState = digitalRead(SWITCH2_PIN);
+
+  // Detect HIGH -> LOW transition
+  if (lastPiezoState == HIGH && piezoState == LOW) {
+    unsigned long now = millis();
+    if (now - lastPiezoDetectTime > PIEZO_COOLDOWN) {
+      motor2StopCount++;                  // Increment hit counter
+      Serial.print("Motor2 Piezo hit: ");
+      Serial.println(motor2StopCount);
+      digitalWrite(LED, HIGH);            // LED ON briefly
+      lastPiezoDetectTime = now;
+
+      // Stop Motor2 after 5 hits
+      if (motor2StopCount >= MOTOR2_STOP_TARGET) {
+        motor2Running = false;            // Stop PWM
+        digitalWrite(MOTOR2_RELAY_PIN, LOW); // Relay OFF
+        Serial.println("Motor2 stopped via Piezo relay after 5 hits.");
+      }
+    }
+  }
+
+  lastPiezoState = piezoState;
+
+  // Turn off LED after cooldown
+  if (millis() - lastPiezoDetectTime > PIEZO_COOLDOWN) {
+    digitalWrite(LED, LOW);
+  }
+}
+
+// ============================
+// Display Control
+// ============================
 void showTimeAndCycle(int seconds, int cycle) {
   uint8_t digits[] = {
-    display.encodeDigit((seconds / 10) % 10),
-    display.encodeDigit(seconds % 10),
-    display.encodeDigit((cycle / 10) % 10),
-    display.encodeDigit(cycle % 10)
+    display.encodeDigit((seconds / 10) % 10), // Tens place of seconds
+    display.encodeDigit(seconds % 10),        // Ones place of seconds
+    display.encodeDigit((cycle / 10) % 10),   // Tens place of cycle
+    display.encodeDigit(cycle % 10)           // Ones place of cycle
   };
   display.setSegments(digits);
 }
 
-void activateMagnet1() {
-  Serial.println("Magnet1 ON");
-  digitalWrite(ELECTROMAGNET1_PIN, HIGH);
-  magnet1Active = true;
-  magnet1Start = millis();
-  int combined = t * 100 + cycle;
-  display.showNumberDecEx(combined, 0x40, true);
-}
-
-void activateMagnet2() {
-  Serial.println("Magnet2 ON");
-  digitalWrite(ELECTROMAGNET2_PIN, HIGH);
-  magnet2Active = true;
-  magnet2Start = millis();
-  int combined = t * 100 + cycle;
-  display.showNumberDecEx(combined, 0x40, true);
-}
-
-void updateMagnets(unsigned long now) {
-  if (magnet1Active && now - magnet1Start >= MAGNET_ON_DURATION) {
-    Serial.println("Magnet1 OFF");
-    digitalWrite(ELECTROMAGNET1_PIN, LOW);
-    magnet1Active = false;
-  }
-  if (magnet2Active && now - magnet2Start >= MAGNET_ON_DURATION) {
-    Serial.println("Magnet2 OFF");
-    digitalWrite(ELECTROMAGNET2_PIN, LOW);
-    magnet2Active = false;
-  }
-}
-
+// ============================
+// Scroll "FIN" at end of 10 cycles
+// ============================
 void finishScroll() {
-  // Message to scroll: "FINISH"
-  const uint8_t message[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_I, CHAR_S, CHAR_H };
+  const uint8_t CHAR_F = 0b01110001;
+  const uint8_t CHAR_I = 0b00010000;
+  const uint8_t CHAR_N = 0b01010100;
+  const uint8_t CHAR_BLANK = 0x00;
+
+  const uint8_t message[] = { CHAR_F, CHAR_I, CHAR_N };
   const int len = sizeof(message);
 
-  // Scroll the message across the 4-digit display
   for (int i = 0; i <= len + 3; i++) {
     uint8_t frame[4] = {
       (i >= 3 && i - 3 < len) ? message[i - 3] : CHAR_BLANK,
@@ -261,22 +319,15 @@ void finishScroll() {
     delay(300);
   }
 
-  // Display final static message: "FIN "
   uint8_t final[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_BLANK };
   display.setSegments(final);
 
-  // Stop Motor2 PWM
-  analogWrite(MOTOR2_IN1, 0);
-  analogWrite(MOTOR2_IN2, 0);
-
-  // Turn off all outputs
-  digitalWrite(LED, LOW);
-  digitalWrite(ELECTROMAGNET1_PIN, LOW);
-  digitalWrite(ELECTROMAGNET2_PIN, LOW);
+  // Turn off all actuators
+  digitalWrite(ELECTROMAGNET_PIN, HIGH);
   digitalWrite(MOTOR1_RELAY_PIN, LOW);
   digitalWrite(MOTOR2_RELAY_PIN, LOW);
+  digitalWrite(LED, LOW);
 
-  // Wait 30 seconds before clearing display
-  delay(30000);
+  delay(30000);  // Wait before clearing display
   display.clear();
 }
