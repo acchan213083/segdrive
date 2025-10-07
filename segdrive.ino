@@ -57,8 +57,8 @@ TM1637Display display(CLK, DIO);
 // ============================
 // Timing and Configuration Variables
 // ============================
-const unsigned long MAGNET_OFF_DURATION     = 5000;    // Electromagnet OFF duration at cycle start (ms)
-const unsigned long CYCLE_TOTAL_DURATION    = 40000;   // Active phase duration per cycle (ms)
+const unsigned long MAGNET_OFF_DURATION     = 10000;    // Electromagnet OFF duration at cycle start (ms)
+const unsigned long CYCLE_TOTAL_DURATION    = 30000;   // Active phase duration per cycle (ms)
 const unsigned long MOTOR_ON_DURATION       = 10000;   // Motor1 run time (ms)
 const unsigned long MAGNET_INITIAL_INTERVAL = 5000;    // Pre-start interval before cycles begin (ms)
 const int  MOTOR2_STOP_TARGET               = 5;       // Piezo hits required to stop Motor2

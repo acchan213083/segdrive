@@ -38,7 +38,7 @@ This project controls two DC motors and one electromagnet module using an Arduin
 
 - The program begins with a 5-second **interval phase** before starting the first active cycle.  
 - Then it alternates between:  
-  - **40 seconds of active phase** (`state = true`)  
+  - **30 seconds of active phase** (`state = true`)  
   - **5 seconds of rest interval** (`state = false`)  
 - This loop continues for **10 full cycles**.  
 - After the 10th cycle, the display scrolls the word `FIN` from right to left and shuts down.
@@ -72,7 +72,7 @@ This project controls two DC motors and one electromagnet module using an Arduin
 
 ## 🧲 Electromagnet Behavior
 
-- The **electromagnet** is turned OFF for 5 seconds at the start of each cycle and then restored ON.  
+- The **electromagnet** is turned OFF for 10 seconds at the start of each cycle and then restored ON.  
 - Each activation is independent and does not block the countdown.  
 - While active, the **colon `:` on the 7-segment display lights up for 1 second**.
 
