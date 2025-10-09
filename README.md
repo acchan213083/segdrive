@@ -1,105 +1,109 @@
-# Arduino Timing Controller with PWM Motor Control, Electromagnets, and 7-Segment Display
+# Arduino Timing Controller with Relay, PWM Motor, Electromagnet, and 7-Segment Display
 
-This project controls two DC motors (RE-280RA) via PWM signals and an L298 motor driver, two electromagnet modules (KEYESTUDIO), and a 4-digit 7-segment LED display (TM1637). It performs timed cycles with visual feedback and synchronized electromagnet activation. Additionally, it supports a **momentary switch to trigger Motor1 and LED for 10 seconds**, including a **rotating '0' animation** on the display during the timer.
+This project uses an Arduino Uno to control two DC motors and one electromagnet module with precise timing logic. A TM1637 4-digit 7-segment LED display provides countdown and cycle feedback. The system performs timed cycles with synchronized motor and electromagnet activation, user input handling, and visual feedback.
 
 ## 🔧 Hardware Components
 
 - Arduino Uno  
-- L298 Motor Driver (PWM-compatible pins required)  
-- RE-280RA DC Motors ×2  
-- KEYESTUDIO Electromagnet Modules ×2  
+- L298 Motor Driver (PWM-compatible pins required for Motor2)  
+- DC Motors ×2 (e.g., RE-280RA)  
+- Electromagnet ×1 (e.g., KEYESTUDIO)  
 - TM1637 4-digit 7-segment LED display  
-- Push Button Switch  
-- External power supply (recommended for motors and electromagnets)  
-- Optional: Relay modules connected to D4 and D12 for motor status indication
+- Push Button Switches ×2 (Start and Motor1)  
+- Piezo sensor for Motor2 stop  
+- External power supply (recommended for motors and electromagnet)  
+- Relay modules for Motor1 and Motor2 status indication (optional)
 
 ## 📍 Pin Configuration
 
-| Component                   | Arduino Pin |
-|----------------------------|-------------|
-| Motor1 IN1 (PWM)           | D5          |
-| Motor1 IN2 (PWM)           | D6          |
-| Motor2 IN3 (PWM)           | D9          |
-| Motor2 IN4 (PWM)           | D10         |
-| TM1637 CLK                 | D2          |
-| TM1637 DIO                 | D3          |
-| LED Indicator              | D13         |
-| Electromagnet 1            | D8          |
-| Electromagnet 2            | D11         |
-| Momentary Switch           | D7          |
-| Motor1 Status Output (Relay)| D4          |
-| Motor2 Status Output (Relay)| D12         |
+| Component                    | Arduino Pin |
+|-----------------------------|-------------|
+| Electromagnet               | D2          |
+| TM1637 CLK                  | D4          |
+| TM1637 DIO                  | D5          |
+| Start Switch Input          | D6          |
+| Motor1 Switch Input         | D7          |
+| Motor2 Piezo Input          | D8          |
+| Motor1 Status Output (Relay)| D9          |
+| Motor2 Status Output (Relay)| D10         |
+| Motor2 IN1 (PWM)            | D11         |
+| Motor2 IN2 (PWM)            | D12         |
+| LED Indicator               | D13         |
 
-> ⚠️ Note: IN1–IN4 must be connected to PWM-capable pins on the Arduino Uno (3, 5, 6, 9, 10, 11).  
-> D4 and D12 are digital output pins that go HIGH when Motor1 or Motor2 is running, respectively. These can be used to drive relay modules for external devices.  
-> The switch uses INPUT_PULLUP configuration.
+> ⚠️ Note: Motor2 IN1 and IN2 must be connected to PWM-capable pins on the Arduino Uno.  
+> D9 and D10 are digital output pins that go HIGH when Motor1 or Motor2 is running.  
+> Both switches use `INPUT_PULLUP` configuration.
 
 ## ⏱️ Operation Overview
 
-- The program begins with a 5-second **interval phase** (cycle 0).  
-- Then it alternates between:  
-  - **45 seconds of PWM motor operation** (Motor2, `state = true`)  
-  - **5 seconds of rest interval** (`state = false`)  
-- This loop continues for **10 full cycles**.  
-- After the 10th cycle, the display scrolls the word `FINISH` from right to left.  
+- System starts in **READY_PHASE** with scrolling "READY" display.  
+- Pressing the **start switch** transitions to **COOL_PHASE** (5-second rest interval).  
+- After the rest interval, the system enters **ACTIVE_PHASE** (30-second active cycle).  
+- The program repeats **10 full cycles**, alternating between active and cool phases.  
+- After the 10th cycle, the display scrolls `FIN` and the system resets.
 
-### 🔹 Motor1 Switch Control
+## 🔹 Motor1 Switch Control
 
-- Pressing the **momentary switch (D7)** triggers Motor1 (IN1/IN2) and the 13-pin LED for **10 seconds**.  
-- If the switch is pressed again during the 10-second operation, the timer **resets to 10 seconds from that moment**.  
-- **During the 5-second interval phase**, the Motor1 timer is **cancelled** and cannot run. After the interval, the switch can be pressed again for a valid 10-second operation.  
-- While Motor1 is active, **D4 goes HIGH**, allowing relay-based control of external devices.
+- Pressing the **momentary switch (D7)** during ACTIVE_PHASE triggers Motor1 for **10 seconds**.  
+- The 10-second timer starts immediately regardless of remaining phase time.  
+- If the phase changes to COOL_PHASE or READY_PHASE, Motor1 stops immediately.  
+- While Motor1 is active, **D9 goes HIGH**, allowing relay-based control of external devices.
 
-### 🔹 Motor2 Operation
+## 🔹 Motor2 Operation
 
-- Motor2 runs automatically during each 45-second active phase.  
-- While Motor2 is active (`state = true`), **D12 goes HIGH**, enabling relay-based control if needed.
+- Motor2 runs automatically during ACTIVE_PHASE.  
+- Pressing the **piezo sensor (D8)** increments a counter.  
+- After **5 piezo hits**, Motor2 stops for the remainder of the cycle.  
+- While active, **D10 goes HIGH**, enabling relay-based control if needed.
 
-### 🔹 Rotating '0' Animation on 7-Segment Display
+## 🔹 7-Segment Display
 
-- While Motor1 is running, the program animates **the '0' digit corresponding to the cycle number** by turning off its segments sequentially:  
-  - **Cycle 0:** Ten's place '0' rotates  
-  - **Cycle 1–9:** Ten's place '0' rotates  
-  - **Cycle 10:** One's place '0' rotates  
-- The animation updates every **200 ms**, giving a spinning effect.
+- **Left 2 digits**: countdown seconds remaining in the phase.  
+- **Right 2 digits**: current cycle number.  
+- During Motor1's 10-second timer, the corresponding '0' digit rotates to indicate Motor1 activity.  
+- READY_PHASE features a scrolling "READY" message.  
+- After 10 cycles, the display scrolls `FIN`.
+
+## 🔹 Active Phase Behavior
+
+- **30-second active phase**:  
+  - Motor2 runs automatically.  
+  - Motor1 can be triggered by the switch for 10 seconds.  
+  - Electromagnet activates at the start of each cycle for 10 seconds.  
+- Motor1 respects phase boundaries: stops if phase changes.  
+- Countdown updates every second using `millis()` (non-blocking).
+
+## 🔹 Cool Phase Behavior
+
+- **5-second rest interval**:  
+  - Motors are stopped.  
+  - READY scroll animation is not active to prevent 7-segment flicker.  
+  - Electromagnet remains off.
 
 ## 🎚️ PWM Motor Control
 
-- Motors are controlled using `analogWrite()` for smooth speed control.  
-- Each motor has an independent PWM power level:  
-  - `motorPower1` and `motorPower2` (default: 255)  
-- You can adjust these values to fine-tune motor speed.
+- Motor2 is controlled using `analogWrite()` for smooth speed control.  
+- PWM power level is set to 255 by default.
 
-## 🧲 Electromagnet Behavior
+## 🧲 Electromagnet Control
 
-- **Electromagnet 1** activates at the start of the 45-second motor phase.  
-- **Electromagnet 2** activates at the end of the 45-second motor phase.  
-- Each electromagnet stays ON for **5 seconds**, independently.  
-- While active, the **colon `:` on the 7-segment display lights up for 1 second**.
-
-## 📺 Display Behavior
-
-- The 7-segment display shows:  
-  - **Left 2 digits**: countdown seconds  
-  - **Right 2 digits**: current cycle number  
-- During Motor1's 10-second timer, the appropriate '0' digit rotates while Motor1 is active.  
-- After 10 cycles, the display scrolls `FINISH` from right to left.
+- The electromagnet is activated at the start of each active cycle for 10 seconds.  
+- Its timing is independent and does not block other operations.
 
 ## ⌚ Timing Logic
 
-- All timing is handled using `millis()` for non-blocking countdowns.  
-- Countdown continues even while electromagnets are active.  
-- Speed can be adjusted using the `speedFactor` variable (e.g., `2.0` for double speed).  
-- Motor1's 10-second timer respects the interval phase and cancels itself if the interval starts.
+- All timing uses `millis()` to allow non-blocking countdowns.  
+- Motor1’s 10-second timer is independent but cancels if phase changes.  
+- Piezo input is debounced with 100 ms to prevent false triggers.
 
 ## 📄 Code Features
 
-- PWM motor control via `analogWrite()`  
-- Non-blocking countdown using `millis()`  
-- Independent control of two electromagnets  
-- Momentary switch control for Motor1/LED  
-- Rotating '0' animation during Motor1 timer  
-- Visual feedback via colon and scrolling text  
+- Motor1: relay-controlled, 10-second timer during ACTIVE_PHASE  
+- Motor2: PWM speed control, stops after 5 piezo hits  
+- Non-blocking phase countdown using `millis()`  
+- Electromagnet: independent 10-second activation  
+- 7-segment display: countdown, cycle, and Motor1 rotation animation  
+- Scrollable READY and FIN messages  
 - Relay-compatible status outputs for Motor1 and Motor2  
 - Modular functions for motor control, display, and magnet timing
 
@@ -107,18 +111,18 @@ This project controls two DC motors (RE-280RA) via PWM signals and an L298 motor
 
 1. Connect all components according to the pin configuration.  
 2. Upload the Arduino sketch.  
-3. Power the motors and electromagnets using an external supply.  
-4. Press the switch to test Motor1 and LED operation.  
-5. Observe countdown cycles, Motor2 operation, electromagnet activation, and '0' rotation during Motor1 timer.  
-6. Use D4 and D12 to control relays or monitor motor activity externally.
+3. Power motors and electromagnet with an external supply.  
+4. Press the start switch to initiate the system.  
+5. Observe countdown cycles, Motor2 operation, Motor1 rotation animation, piezo sensor detection, and electromagnet activation.  
+6. Use D9 and D10 to control relays or monitor motor activity externally.
 
 ## 🛠️ Customization Ideas
 
-- Adjust `motorPower1` and `motorPower2` for speed tuning.  
-- Adjust `ROTATE_INTERVAL` for faster or slower '0' rotation.  
-- Add buzzer or sound feedback during electromagnet activation or Motor1 operation.  
-- Display additional messages or animations after `FINISH`.  
-- Use D4/D12 to trigger external devices like fans, lights, or alarms via relays.
+- Adjust Motor2 PWM power for speed tuning.  
+- Adjust display update intervals for smoother animations.  
+- Add buzzer or visual feedback during electromagnet activation or Motor1 operation.  
+- Display additional messages after `FIN`.  
+- Use D9/D10 to trigger external devices like fans, lights, or alarms.
 
 ## 📜 License
 
