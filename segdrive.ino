@@ -1,33 +1,7 @@
 /*
 MIT License
-<<<<<<< HEAD
 
-Copyright (c) 2025 Namabayashi
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-*/
-
-#include <TM1637Display.h>
-=======
->>>>>>> test1
-
-Copyright (c) 2025 Namabayashi
+Copyright © 2020 Namabayashi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -46,6 +20,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
 */
 
 #include <TM1637Display.h> // Library for controlling 4-digit 7-segment display
@@ -398,79 +373,3 @@ void loop() {
       break;
   }
 }
-<<<<<<< HEAD
-
-void showTimeAndCycle(int seconds, int cycle) {
-  uint8_t digits[] = {
-    display.encodeDigit((seconds / 10) % 10),
-    display.encodeDigit(seconds % 10),
-    display.encodeDigit((cycle / 10) % 10),
-    display.encodeDigit(cycle % 10)
-  };
-  display.setSegments(digits);
-}
-
-void activateMagnet1() {
-  Serial.println("Magnet1 ON");
-  digitalWrite(electromagnet1, HIGH);
-  magnet1Active = true;
-  magnet1Start = millis();
-  int combined = t * 100 + cycle;
-  display.showNumberDecEx(combined, 0x40, true);
-}
-
-void activateMagnet2() {
-  Serial.println("Magnet2 ON");
-  digitalWrite(electromagnet2, HIGH);
-  magnet2Active = true;
-  magnet2Start = millis();
-  int combined = t * 100 + cycle;
-  display.showNumberDecEx(combined, 0x40, true);
-}
-
-void updateMagnets(unsigned long now) {
-  if (magnet1Active && now - magnet1Start >= MAGNET_ON_DURATION) {
-    Serial.println("Magnet1 OFF");
-    digitalWrite(electromagnet1, LOW);
-    magnet1Active = false;
-  }
-  if (magnet2Active && now - magnet2Start >= MAGNET_ON_DURATION) {
-    Serial.println("Magnet2 OFF");
-    digitalWrite(electromagnet2, LOW);
-    magnet2Active = false;
-  }
-}
-
-void finishScroll() {
-  const uint8_t message[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_I, CHAR_S, CHAR_H };
-  const int len = sizeof(message);
-
-  for (int i = 0; i <= len + 3; i++) {
-    uint8_t frame[4] = {
-      (i >= 3 && i - 3 < len) ? message[i - 3] : CHAR_BLANK,
-      (i >= 2 && i - 2 < len) ? message[i - 2] : CHAR_BLANK,
-      (i >= 1 && i - 1 < len) ? message[i - 1] : CHAR_BLANK,
-      (i < len)               ? message[i]     : CHAR_BLANK
-    };
-    display.setSegments(frame);
-    delay(300);
-  }
-
-  uint8_t final[] = { CHAR_F, CHAR_I, CHAR_N, CHAR_BLANK };
-  display.setSegments(final);
-
-  analogWrite(IN1, 0);
-  analogWrite(IN2, 0);
-  analogWrite(IN3, 0);
-  analogWrite(IN4, 0);
-  digitalWrite(LED, LOW);
-  digitalWrite(electromagnet1, LOW);
-  digitalWrite(electromagnet2, LOW);
-  digitalWrite(MOTOR1_STATUS_PIN, LOW);
-  digitalWrite(MOTOR2_STATUS_PIN, LOW);
-
-  delay(30000);
-  display.clear();
-}
-=======
->>>>>>> test1
