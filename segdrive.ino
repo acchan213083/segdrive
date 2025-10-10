@@ -64,6 +64,7 @@ const unsigned long CYCLE_ACTIVE = 30000;    // Active phase duration (30 sec)
 const unsigned long CYCLE_INTERVAL = 5000;   // Cool phase duration (5 sec)
 
 // ==== System State Variables ====
+unsigned long activePhaseStart = 0; 
 bool motor1Active = false;
 unsigned long motor1Start = 0;
 bool motor2Running = false;
@@ -315,6 +316,7 @@ void loop() {
           motor2Running = true;
           motor2Hits = 0;
           activateMagnet();
+          activePhaseStart = now;
 
           // If Motor1 switch is pressed, start Motor1 immediately
           if (digitalRead(SWITCH1_PIN) == LOW) {
@@ -366,6 +368,9 @@ void loop() {
 
       // --- Update Motors and Magnet ---
       updateMotor1(now);
+      if (motor2Running && (motor2Hits >= MOTOR2_STOP_TARGET || (now - activePhaseStart >= CYCLE_ACTIVE - 10000))) {
+        motor2Running = false;
+       }
       driveMotor2();
       checkMotor2Piezo(now);     // Piezo hit detection and count
       updateMagnet(now);         // Turn off magnet after 10s

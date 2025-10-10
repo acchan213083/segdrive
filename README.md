@@ -51,9 +51,10 @@ This project uses an Arduino Uno to control two DC motors and one electromagnet 
 
 ## 🔹 Motor2 Operation
 
-- Motor2 runs automatically during ACTIVE_PHASE.  
+- Motor2 runs automatically during **ACTIVE_PHASE**.  
 - Pressing the **piezo sensor (D8)** increments a counter.  
 - After **5 piezo hits**, Motor2 stops for the remainder of the cycle.  
+- **Additionally**, if no piezo hits occur, Motor2 will **automatically stop when 10 seconds remain** in the ACTIVE_PHASE countdown.  
 - While active, **D10 goes HIGH**, enabling relay-based control if needed.
 
 ## 🔹 7-Segment Display
@@ -94,12 +95,13 @@ This project uses an Arduino Uno to control two DC motors and one electromagnet 
 
 - All timing uses `millis()` to allow non-blocking countdowns.  
 - Motor1’s 10-second timer is independent but cancels if phase changes.  
-- Piezo input is debounced with 100 ms to prevent false triggers.
+- Piezo input is debounced with 100 ms to prevent false triggers.  
+- Motor2 automatically stops when 10 seconds remain in ACTIVE_PHASE, even without piezo activation.
 
 ## 📄 Code Features
 
 - Motor1: relay-controlled, 10-second timer during ACTIVE_PHASE  
-- Motor2: PWM speed control, stops after 5 piezo hits  
+- Motor2: PWM speed control, stops after 5 piezo hits **or automatically when 10 seconds remain in ACTIVE_PHASE**  
 - Non-blocking phase countdown using `millis()`  
 - Electromagnet: independent 10-second activation  
 - 7-segment display: countdown, cycle, and Motor1 rotation animation  
