@@ -42,12 +42,14 @@ This project uses an Arduino Uno to control two DC motors and one electromagnet 
 - The program repeats **10 full cycles**, alternating between active and cool phases.  
 - After the 10th cycle, the display scrolls `FIN` and the system resets.
 
-## 🔹 Motor1 Switch Control
+## 🔹 Motor1 Switch Control (Updated Behavior)
 
 - Pressing the **momentary switch (D7)** during ACTIVE_PHASE triggers Motor1 for **10 seconds**.  
-- The 10-second timer starts immediately regardless of remaining phase time.  
-- If the phase changes to COOL_PHASE or READY_PHASE, Motor1 stops immediately.  
-- While Motor1 is active, **D9 goes HIGH**, allowing relay-based control of external devices.
+- **Each press resets the 10-second timer**, so repeated presses **extend the runtime**.  
+- Motor1 stops immediately if the system transitions to COOL_PHASE or READY_PHASE.  
+- While Motor1 is active, **D9 goes HIGH**, allowing relay-based control of external devices.  
+
+> ✅ This is the updated “last-press-extends-10-seconds” behavior.
 
 ## 🔹 Motor2 Operation
 
@@ -69,7 +71,7 @@ This project uses an Arduino Uno to control two DC motors and one electromagnet 
 
 - **30-second active phase**:  
   - Motor2 runs automatically.  
-  - Motor1 can be triggered by the switch for 10 seconds.  
+  - Motor1 can be triggered by the switch for 10 seconds, with each press extending runtime.  
   - Electromagnet activates at the start of each cycle for 10 seconds.  
 - Motor1 respects phase boundaries: stops if phase changes.  
 - Countdown updates every second using `millis()` (non-blocking).
@@ -94,13 +96,13 @@ This project uses an Arduino Uno to control two DC motors and one electromagnet 
 ## ⌚ Timing Logic
 
 - All timing uses `millis()` to allow non-blocking countdowns.  
-- Motor1’s 10-second timer is independent but cancels if phase changes.  
+- Motor1’s 10-second timer **resets on every button press** during ACTIVE_PHASE but cancels if phase changes.  
 - Piezo input is debounced with 100 ms to prevent false triggers.  
 - Motor2 automatically stops when 10 seconds remain in ACTIVE_PHASE, even without piezo activation.
 
 ## 📄 Code Features
 
-- Motor1: relay-controlled, 10-second timer during ACTIVE_PHASE  
+- Motor1: relay-controlled, **10-second timer extended on repeated presses** during ACTIVE_PHASE  
 - Motor2: PWM speed control, stops after 5 piezo hits **or automatically when 10 seconds remain in ACTIVE_PHASE**  
 - Non-blocking phase countdown using `millis()`  
 - Electromagnet: independent 10-second activation  

@@ -386,31 +386,27 @@ void loop() {
         }
       }
 
-      // --- Debounce for Motor1 Button ---
+      // ==== Debounce for Motor1 Button (Modified for retriggerable 10s) ====
       const unsigned long DEBOUNCE_S1 = 50;
       static int lastRawS1 = HIGH;
-      static int stableS1 = HIGH;
       static unsigned long lastS1Debounce = 0;
-      static bool motor1Handled = false;
 
       int rawS1 = digitalRead(SWITCH1_PIN);
       if (rawS1 != lastRawS1) {
         lastS1Debounce = now;
-        motor1Handled = false;
       }
       lastRawS1 = rawS1;
 
+      // Remove motor1Handled and stableS1 check to allow retrigger
       if ((now - lastS1Debounce) > DEBOUNCE_S1) {
-        if (rawS1 != stableS1) {
-          stableS1 = rawS1;
-          if (stableS1 == LOW && !motor1Handled) {
-            motor1Handled = true;
-            motor1Start = now;
-            motor1Active = true;
-            digitalWrite(MOTOR1_RELAY_PIN, HIGH);
-          }
+        if (rawS1 == LOW) {  // Press detected
+          motor1Start = now;  // Reset start time to now
+          motor1Active = true;
+          digitalWrite(MOTOR1_RELAY_PIN, HIGH);
+          Serial.println("Motor1 retriggered");
         }
       }
+
 
       // --- Update Motors and Magnet ---
       updateMotor1(now);
