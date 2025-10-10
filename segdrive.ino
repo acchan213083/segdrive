@@ -64,7 +64,7 @@ const unsigned long CYCLE_ACTIVE = 30000;    // Active phase duration (30 sec)
 const unsigned long CYCLE_INTERVAL = 5000;   // Cool phase duration (5 sec)
 
 // ==== System State Variables ====
-unsigned long activePhaseStart = 0; 
+unsigned long activePhaseStart = 0;
 bool motor1Active = false;
 unsigned long motor1Start = 0;
 bool motor2Running = false;
@@ -101,18 +101,45 @@ uint8_t rotate180(uint8_t seg) {
   return r;
 }
 
-// ==== Display Time and Cycle Count (rotated) ====
-void showTimeCycle180(int sec, int cyc) {
+// ==== Display Time and Cycle with Colon ====
+void showTimeCycleWithHits(int sec, int cyc, int hits, unsigned long now) {
+  static bool colonBlinkState = false;
+  static unsigned long lastBlinkTime = 0;
+  const uint8_t COLON_SEGMENT = 0b10000000;
+
   int s1 = (sec / 10) % 10;
   int s0 = sec % 10;
   int c1 = (cyc / 10) % 10;
   int c0 = cyc % 10;
+
   uint8_t d[4] = {
     rotate180(display.encodeDigit(c0)),
     rotate180(display.encodeDigit(c1)),
     rotate180(display.encodeDigit(s0)),
     rotate180(display.encodeDigit(s1))
   };
+
+  switch (hits) {
+    case 1:
+      d[1] |= COLON_SEGMENT;
+      d[2] |= COLON_SEGMENT;
+      break;
+    case 2:
+      d[1] |= COLON_SEGMENT;
+      break;
+    case 3:
+      d[2] |= COLON_SEGMENT;
+      break;
+    case 4:
+      if (now - lastBlinkTime >= 500) {
+        colonBlinkState = !colonBlinkState;
+        lastBlinkTime = now;
+      }
+      if (colonBlinkState) d[1] |= COLON_SEGMENT;
+      else d[2] |= COLON_SEGMENT;
+      break;
+  }
+
   display.setSegments(d);
 }
 
@@ -230,7 +257,7 @@ void resetSystem() {
   digitalWrite(ELECTROMAGNET_PIN, HIGH);
   lastTick = millis();
   readyScrollIndex = -4;
-  showTimeCycle180(countdown, cycle);
+  showTimeCycleWithHits(countdown, cycle, motor2Hits, millis());
 }
 
 // ==== Arduino Setup ===
@@ -261,38 +288,54 @@ void setup() {
 void loop() {
   unsigned long now = millis(); // Current time in milliseconds
 
-  // --- Handle Start Button Press ---
-  static int lastStart = HIGH;
-  int start = digitalRead(SWITCH_START);
-  if (lastStart == HIGH && start == LOW) {
-    // Detect double press within interval
-    if (now - lastStartTime < DOUBLE_PRESS_INTERVAL) startCount++;
-    else startCount = 1;
-    lastStartTime = now;
+  // --- Debounce for Start Button ---
+  const unsigned long DEBOUNCE_DELAY = 50;
+  static int lastRawStart = HIGH;
+  static int stableStart = HIGH;
+  static unsigned long lastStartDebounce = 0;
+  static bool startHandled = false;
 
-    if (startCount >= 2) {
+  int rawStart = digitalRead(SWITCH_START);
+  if (rawStart != lastRawStart) {
+    lastStartDebounce = now;
+    startHandled = false;
+  }
+  lastRawStart = rawStart;
+
+  if ((now - lastStartDebounce) > DEBOUNCE_DELAY) {
+    if (rawStart != stableStart) {
+      stableStart = rawStart;
+      if (stableStart == LOW && !startHandled) {
+        startHandled = true;
+
+        if (now - lastStartTime < DOUBLE_PRESS_INTERVAL) startCount++;
+        else startCount = 1;
+        lastStartTime = now;
+
+        if (startCount >= 2) {
       // Double press: reset system
-      stopMotors();
-      const uint8_t MSG_RESET[] = { MY_SEG_R, MY_SEG_E, MY_SEG_S, MY_SEG_E, MY_SEG_T };
-      scrollMessage180(MSG_RESET, 5, 200);
-      resetSystem();
-      startCount = 0;
-    } else {
+          stopMotors();
+          const uint8_t MSG_RESET[] = { MY_SEG_R, MY_SEG_E, MY_SEG_S, MY_SEG_E, MY_SEG_T };
+          scrollMessage180(MSG_RESET, 5, 200);
+          resetSystem();
+          startCount = 0;
+        } else {
       // Single press: toggle between READY and COOL phase
-      if (phase == READY_PHASE) {
-        phase = COOL_PHASE;
-        countdown = CYCLE_INTERVAL / 1000;
-        lastTick = now;
-        stopMotors();
-      } else {
-        phase = READY_PHASE;
-        countdown = 0;
-        stopMotors();
-        readyScrollIndex = -4;
+          if (phase == READY_PHASE) {
+            phase = COOL_PHASE;
+            countdown = CYCLE_INTERVAL / 1000;
+            lastTick = now;
+            stopMotors();
+          } else {
+            phase = READY_PHASE;
+            countdown = 0;
+            stopMotors();
+            readyScrollIndex = -4;
+          }
+        }
       }
     }
   }
-  lastStart = start;
 
   // --- Phase Control ---
   switch (phase) {
@@ -317,16 +360,9 @@ void loop() {
           motor2Hits = 0;
           activateMagnet();
           activePhaseStart = now;
-
-          // If Motor1 switch is pressed, start Motor1 immediately
-          if (digitalRead(SWITCH1_PIN) == LOW) {
-            motor1Active = true;
-            motor1Start = now;
-            digitalWrite(MOTOR1_RELAY_PIN, HIGH);
-          }
         }
       }
-      showTimeCycle180(countdown, cycle);
+      showTimeCycleWithHits(countdown, cycle, motor2Hits, now);
       break;
 
     case ACTIVE_PHASE:
@@ -350,31 +386,42 @@ void loop() {
         }
       }
 
-      // --- Motor1 Switch Handling ---
-      static int lastS1 = HIGH;
-      int s1 = digitalRead(SWITCH1_PIN);
-      if (s1 != lastS1) {
-        lastS1 = s1;
-      }
+      // --- Debounce for Motor1 Button ---
+      const unsigned long DEBOUNCE_S1 = 50;
+      static int lastRawS1 = HIGH;
+      static int stableS1 = HIGH;
+      static unsigned long lastS1Debounce = 0;
+      static bool motor1Handled = false;
 
-      if (phase == ACTIVE_PHASE && s1 == LOW) {
-        // Restart Motor1 timer on press
-        motor1Start = now;
-        if (!motor1Active) {
-          motor1Active = true;
+      int rawS1 = digitalRead(SWITCH1_PIN);
+      if (rawS1 != lastRawS1) {
+        lastS1Debounce = now;
+        motor1Handled = false;
+      }
+      lastRawS1 = rawS1;
+
+      if ((now - lastS1Debounce) > DEBOUNCE_S1) {
+        if (rawS1 != stableS1) {
+          stableS1 = rawS1;
+          if (stableS1 == LOW && !motor1Handled) {
+            motor1Handled = true;
+            motor1Start = now;
+            motor1Active = true;
+            digitalWrite(MOTOR1_RELAY_PIN, HIGH);
+          }
         }
-        digitalWrite(MOTOR1_RELAY_PIN, HIGH);
       }
 
       // --- Update Motors and Magnet ---
       updateMotor1(now);
       if (motor2Running && (motor2Hits >= MOTOR2_STOP_TARGET || (now - activePhaseStart >= CYCLE_ACTIVE - 10000))) {
         motor2Running = false;
-       }
+      }
       driveMotor2();
-      checkMotor2Piezo(now);     // Piezo hit detection and count
-      updateMagnet(now);         // Turn off magnet after 10s
-      showTimeCycle180(countdown, cycle); // Update display
+      checkMotor2Piezo(now);
+      updateMagnet(now);
+      showTimeCycleWithHits(countdown, cycle, motor2Hits, now);
       break;
   }
 }
+
