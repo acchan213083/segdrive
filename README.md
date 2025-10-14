@@ -42,28 +42,27 @@ This project uses an Arduino Uno to control two DC motors and one electromagnet 
 - The program repeats **10 full cycles**, alternating between active and cool phases.  
 - After the 10th cycle, the display scrolls `FIN` and the system resets.
 
-## 🔹 Motor1 Switch Control (Updated Behavior)
+## 🔹 Motor1 Switch Control
 
 - Pressing the **momentary switch (D7)** during ACTIVE_PHASE triggers Motor1 for **10 seconds**.  
 - **Each press resets the 10-second timer**, so repeated presses **extend the runtime**.  
 - Motor1 stops immediately if the system transitions to COOL_PHASE or READY_PHASE.  
-- While Motor1 is active, **D9 goes HIGH**, allowing relay-based control of external devices.  
-
-> ✅ This is the updated “last-press-extends-10-seconds” behavior.
+- While Motor1 is active, **D9 goes HIGH**, allowing relay-based control of external devices.
+- If no manual switch input is detected, Motor1 will **automatically activate at the 20-second mark** during ACTIVE_PHASE.
 
 ## 🔹 Motor2 Operation
 
 - Motor2 runs automatically during **ACTIVE_PHASE**.  
 - Pressing the **piezo sensor (D8)** increments a counter.  
 - After **5 piezo hits**, Motor2 stops for the remainder of the cycle.  
-- **Additionally**, if no piezo hits occur, Motor2 will **automatically stop when 10 seconds remain** in the ACTIVE_PHASE countdown.  
+- If no piezo hits occur, Motor2 will **automatically stop when 10 seconds remain** in the ACTIVE_PHASE countdown.  
 - While active, **D10 goes HIGH**, enabling relay-based control if needed.
 
 ## 🔹 7-Segment Display
 
 - **Left 2 digits**: countdown seconds remaining in the phase.  
 - **Right 2 digits**: current cycle number.  
-- During Motor1's 10-second timer, the corresponding '0' digit rotates to indicate Motor1 activity.  
+- During Motor1's 10-second timer, the corresponding digit rotates to indicate Motor1 activity.  
 - READY_PHASE features a scrolling "READY" message.  
 - After 10 cycles, the display scrolls `FIN`.
 
@@ -97,7 +96,7 @@ This project uses an Arduino Uno to control two DC motors and one electromagnet 
 
 - All timing uses `millis()` to allow non-blocking countdowns.  
 - Motor1’s 10-second timer **resets on every button press** during ACTIVE_PHASE but cancels if phase changes.  
-- Piezo input is debounced with 100 ms to prevent false triggers.  
+- Piezo input is debounced with 80 ms to prevent false triggers.  
 - Motor2 automatically stops when 10 seconds remain in ACTIVE_PHASE, even without piezo activation.
 
 ## 📄 Code Features

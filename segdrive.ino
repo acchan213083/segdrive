@@ -26,11 +26,12 @@ SOFTWARE.
 #include <TM1637Display.h> // Library for controlling 4-digit 7-segment display
 
 // ==== Pin Configuration ====
+// Define all hardware connections to the Arduino board
 #define CLK 4                  // Clock pin for TM1637 display
 #define DIO 5                  // Data pin for TM1637 display
-#define SWITCH_START 6         // Start button input
-#define SWITCH1_PIN 7          // Motor1 control switch
-#define SWITCH2_PIN 8          // Piezo sensor input for Motor2
+#define SWITCH_START 6         // Start button input (active LOW)
+#define SWITCH1_PIN 7          // Motor1 control switch (active LOW)
+#define SWITCH2_PIN 8          // Piezo sensor input for Motor2 (active LOW pulse)
 #define MOTOR1_RELAY_PIN 9     // Relay control pin for Motor1
 #define MOTOR2_RELAY_PIN 10    // Relay control pin for Motor2
 #define MOTOR2_IN1 11          // Motor2 direction control pin 1
@@ -41,6 +42,7 @@ SOFTWARE.
 TM1637Display display(CLK, DIO); // Initialize display object
 
 // ==== Segment Definitions for Custom Characters ====
+// Define custom segment patterns for scrolling text on the display
 const uint8_t MY_SEG_R = 0b01010000;
 const uint8_t MY_SEG_E = 0b01111001;
 const uint8_t MY_SEG_A = 0b01110111;
@@ -52,43 +54,50 @@ const uint8_t MY_SEG_N = 0b01010100;
 const uint8_t MY_SEG_S = 0b01101101;
 const uint8_t MY_SEG_H = 0b01110110;
 const uint8_t MY_SEG_T = 0b01111000;
-const uint8_t MY_SEG_BLANK = 0x00; // Blank segment
+const uint8_t MY_SEG_BLANK = 0x00; // Blank segment for spacing
 
 // ==== Timing Constants ====
+// Define durations and thresholds for motors and phases
 const unsigned long MOTOR1_DURATION = 10000; // Motor1 runs for 10 seconds
 const unsigned long MOTOR2_PWM = 255;        // Full speed PWM for Motor2
-const unsigned long PIEZO_DEBOUNCE = 100;    // Debounce time for piezo sensor
+const unsigned long PIEZO_DEBOUNCE = 80;     // Debounce time for piezo sensor
 const int MOTOR2_STOP_TARGET = 5;            // Number of hits to stop Motor2
-const int MAX_CYCLES = 10;                   // Maximum number of active cycles
+const int MAX_CYCLES = 10;                  // Maximum number of active cycles
 const unsigned long CYCLE_ACTIVE = 30000;    // Active phase duration (30 sec)
 const unsigned long CYCLE_INTERVAL = 5000;   // Cool phase duration (5 sec)
 
 // ==== System State Variables ====
-unsigned long activePhaseStart = 0;
-bool motor1Active = false;
-unsigned long motor1Start = 0;
-bool motor2Running = false;
-int motor2Hits = 0;
-unsigned long lastPiezo = 0;
-int lastPiezoState = HIGH;
-unsigned long lastTick = 0;
-int countdown = 0;
-int cycle = 0;
-enum Phase { READY_PHASE, COOL_PHASE, ACTIVE_PHASE } phase = READY_PHASE;
-bool magnetActive = false;
-unsigned long magnetStart = 0;
+// Track current status of motors, sensors, timers, and phases
+unsigned long activePhaseStart = 0;          // Time when ACTIVE phase started
+bool motor1Active = false;                   // Is Motor1 currently running?
+unsigned long motor1Start = 0;               // Time when Motor1 was triggered
+bool motor2Running = false;                  // Is Motor2 currently running?
+int motor2Hits = 0;                          // Number of piezo hits detected
+unsigned long lastPiezo = 0;                 // Last time piezo sensor was triggered
+int lastPiezoState = HIGH;                   // Previous piezo sensor state
+unsigned long lastTick = 0;                  // Last time countdown ticked
+int countdown = 0;                           // Countdown timer in seconds
+int cycle = 0;                               // Current cycle number
+enum Phase { READY_PHASE, COOL_PHASE, ACTIVE_PHASE }; // Phase enum
+Phase phase = READY_PHASE;                   // Initial phase
+bool magnetActive = false;                   // Is electromagnet active?
+unsigned long magnetStart = 0;               // Time when magnet was activated
+bool motor1AutoTriggered = false;            // Has Motor1 auto-triggered this cycle?
 
 // ==== Display Scroll Variables ====
-unsigned long lastReadyScroll = 0;
-int readyScrollIndex = -4;
+// Used for scrolling "READY" message on display
+unsigned long lastReadyScroll = 0;           // Last scroll update time
+int readyScrollIndex = -4;                   // Scroll index position
 const uint8_t MSG_READY[] = { MY_SEG_R, MY_SEG_E, MY_SEG_A, MY_SEG_D, MY_SEG_Y };
 
 // ==== Start Button Variables ====
-unsigned long lastStartTime = 0;
-int startCount = 0;
-const unsigned long DOUBLE_PRESS_INTERVAL = 500; // Double press detection window
+// Used for detecting single and double presses
+unsigned long lastStartTime = 0;             // Last start button press time
+int startCount = 0;                          // Number of presses detected
+const unsigned long DOUBLE_PRESS_INTERVAL = 500; // Max interval for double press
 
 // ==== Segment Rotation Function (180° flip) ====
+// Rotates segment pattern for upside-down display orientation
 uint8_t rotate180(uint8_t seg) {
   uint8_t r = 0;
   if (seg & 0b00000001) r |= 0b00001000;
@@ -102,16 +111,19 @@ uint8_t rotate180(uint8_t seg) {
 }
 
 // ==== Display Time and Cycle with Colon ====
+// Shows countdown and cycle number on display, with colon indicators based on hit count
 void showTimeCycleWithHits(int sec, int cyc, int hits, unsigned long now) {
   static bool colonBlinkState = false;
   static unsigned long lastBlinkTime = 0;
   const uint8_t COLON_SEGMENT = 0b10000000;
 
+  // Extract digits from seconds and cycle
   int s1 = (sec / 10) % 10;
   int s0 = sec % 10;
   int c1 = (cyc / 10) % 10;
   int c0 = cyc % 10;
 
+  // Encode digits and rotate for display
   uint8_t d[4] = {
     rotate180(display.encodeDigit(c0)),
     rotate180(display.encodeDigit(c1)),
@@ -119,6 +131,7 @@ void showTimeCycleWithHits(int sec, int cyc, int hits, unsigned long now) {
     rotate180(display.encodeDigit(s1))
   };
 
+  // Add colon indicators based on hit count
   switch (hits) {
     case 1:
       d[1] |= COLON_SEGMENT;
@@ -140,10 +153,11 @@ void showTimeCycleWithHits(int sec, int cyc, int hits, unsigned long now) {
       break;
   }
 
-  display.setSegments(d);
+  display.setSegments(d); // Update display with final digits
 }
 
 // ==== Stop All Motors ====
+// Turns off all motors and resets motor-related flags
 void stopMotors() {
   motor1Active = false;
   motor2Running = false;
@@ -156,21 +170,28 @@ void stopMotors() {
 }
 
 // ==== Motor1 Control ====
+// Handles Motor1 timing and phase-based shutdown
 void updateMotor1(unsigned long now) {
   if (motor1Active && (now - motor1Start >= MOTOR1_DURATION)) {
     motor1Active = false;
     digitalWrite(MOTOR1_RELAY_PIN, LOW);
+//    Serial.println("Motor1 stopped after 10s");
   }
   if (phase != ACTIVE_PHASE && motor1Active) {
     motor1Active = false;
     digitalWrite(MOTOR1_RELAY_PIN, LOW);
+    // Serial.println("Motor1 stopped due to phase change");
   }
   if (motor1Active) {
     digitalWrite(MOTOR1_RELAY_PIN, HIGH);
+    // Serial.println("Motor1 running...");
   }
 }
 
 // ==== Motor2 Drive ====
+// Controls Motor2 during the ACTIVE phase.
+// Uses PWM to drive Motor2 forward and turns on the relay and LED.
+// Stops the motor and turns off indicators when not running.
 void driveMotor2() {
   if (motor2Running && phase == ACTIVE_PHASE) {
     analogWrite(MOTOR2_IN1, MOTOR2_PWM);
@@ -186,6 +207,8 @@ void driveMotor2() {
 }
 
 // ==== Piezo Sensor Check for Motor2 ====
+// Detects hits from the piezo sensor during ACTIVE phase.
+// Increments hit count and stops Motor2 when target is reached.
 void checkMotor2Piezo(unsigned long now) {
   if (phase != ACTIVE_PHASE) {
     lastPiezoState = digitalRead(SWITCH2_PIN);
@@ -203,6 +226,7 @@ void checkMotor2Piezo(unsigned long now) {
 }
 
 // ==== Electromagnet Activation ====
+// Turns ON the electromagnet and records the start time.
 void activateMagnet() {
   digitalWrite(ELECTROMAGNET_PIN, LOW); // LOW = ON
   magnetActive = true;
@@ -210,6 +234,7 @@ void activateMagnet() {
 }
 
 // ==== Electromagnet Deactivation after 10s ====
+// Turns OFF the electromagnet after 10 seconds.
 void updateMagnet(unsigned long now) {
   if (magnetActive && now - magnetStart >= 10000) {
     digitalWrite(ELECTROMAGNET_PIN, HIGH); // HIGH = OFF
@@ -218,6 +243,7 @@ void updateMagnet(unsigned long now) {
 }
 
 // ==== Scroll "READY" Message ====
+// Scrolls the word "READY" across the 4-digit display.
 void scrollReadyLoop() {
   unsigned long now = millis();
   if (now - lastReadyScroll >= 200) {
@@ -235,6 +261,7 @@ void scrollReadyLoop() {
 }
 
 // ==== Scroll Custom Message ====
+// Scrolls any custom message across the display, one frame at a time.
 void scrollMessage180(const uint8_t* msg, int len, int delayMs) {
   for (int i = len + 3; i >= 0; i--) {
     uint8_t frame[4] = { 0 };
@@ -248,6 +275,7 @@ void scrollMessage180(const uint8_t* msg, int len, int delayMs) {
 }
 
 // ==== Reset System to Initial READY State ====
+// Resets all counters, stops motors, and returns to READY phase.
 void resetSystem() {
   countdown = 0;
   cycle = 0;
@@ -260,9 +288,11 @@ void resetSystem() {
   showTimeCycleWithHits(countdown, cycle, motor2Hits, millis());
 }
 
-// ==== Arduino Setup ===
+// ==== Arduino Setup ====
+// This function runs once when the Arduino is powered on or reset.
+// It initializes all pins and sets the system to the READY state.
 void setup() {
-  Serial.begin(9600); // Initialize serial communication for debugging and monitoring
+  Serial.begin(9600); // Start serial communication for debugging
 
   // Configure input pins
   pinMode(SWITCH_START, INPUT_PULLUP); // Start button (active LOW)
@@ -285,10 +315,13 @@ void setup() {
 }
 
 // ==== Main Loop ====
+// This function runs continuously after setup().
+// It handles button input, phase transitions, motor control, and display updates.
 void loop() {
-  unsigned long now = millis(); // Current time in milliseconds
+  unsigned long now = millis(); // Get current time in milliseconds
 
   // --- Debounce for Start Button ---
+  // Prevents false triggers due to mechanical noise when pressing the button.
   const unsigned long DEBOUNCE_DELAY = 50;
   static int lastRawStart = HIGH;
   static int stableStart = HIGH;
@@ -302,25 +335,27 @@ void loop() {
   }
   lastRawStart = rawStart;
 
+  // Check if button state is stable after debounce delay
   if ((now - lastStartDebounce) > DEBOUNCE_DELAY) {
     if (rawStart != stableStart) {
       stableStart = rawStart;
       if (stableStart == LOW && !startHandled) {
         startHandled = true;
 
+        // --- Detect single or double press ---
+        // Double press = reset system
+        // Single press = toggle between READY and COOL phase
         if (now - lastStartTime < DOUBLE_PRESS_INTERVAL) startCount++;
         else startCount = 1;
         lastStartTime = now;
 
         if (startCount >= 2) {
-      // Double press: reset system
           stopMotors();
           const uint8_t MSG_RESET[] = { MY_SEG_R, MY_SEG_E, MY_SEG_S, MY_SEG_E, MY_SEG_T };
           scrollMessage180(MSG_RESET, 5, 200);
           resetSystem();
           startCount = 0;
         } else {
-      // Single press: toggle between READY and COOL phase
           if (phase == READY_PHASE) {
             phase = COOL_PHASE;
             countdown = CYCLE_INTERVAL / 1000;
@@ -340,14 +375,15 @@ void loop() {
   // --- Phase Control ---
   switch (phase) {
     case READY_PHASE:
-      // Display scrolling "READY" message
+      // Display scrolling "READY" message until user starts
       stopMotors();
       scrollReadyLoop();
       break;
 
     case COOL_PHASE:
-      // Countdown before entering ACTIVE phase
+      // Short pause between cycles
       stopMotors();
+      motor1AutoTriggered = false; // Reset auto-trigger flag for Motor1
       if (now - lastTick >= 1000) {
         lastTick = now;
         countdown--;
@@ -358,7 +394,7 @@ void loop() {
           cycle++;
           motor2Running = true;
           motor2Hits = 0;
-          activateMagnet();
+          activateMagnet(); // Turn on electromagnet
           activePhaseStart = now;
         }
       }
@@ -366,27 +402,38 @@ void loop() {
       break;
 
     case ACTIVE_PHASE:
-      // Main active phase: motors run, piezo counts hits
+      // Main working phase: motors run, piezo counts hits
+
+      // --- Debug output to serial monitor ---
+      // Serial.print("Cycle: ");
+      // Serial.print(cycle);
+      // Serial.print(" | Countdown: ");
+      // Serial.print(countdown);
+      // Serial.print(" | motor1AutoTriggered: ");
+      // Serial.println(motor1AutoTriggered);
+
+      // --- Countdown timer ---
       if (now - lastTick >= 1000) {
         lastTick = now;
         countdown--;
         if (countdown <= 0) {
+          motor1AutoTriggered = false; // Reset for next cycle
           if (cycle >= MAX_CYCLES) {
-            // All cycles completed: show "FINISH" and reset
+            // All cycles complete: show "FINISH" and reset
             stopMotors();
             const uint8_t MSG_FINISH[] = { MY_SEG_F, MY_SEG_I, MY_SEG_N, MY_SEG_I, MY_SEG_S, MY_SEG_H };
             scrollMessage180(MSG_FINISH, 6, 300);
             resetSystem();
             break;
           }
-          // Transition to COOL phase
+          // Move to COOL phase
           phase = COOL_PHASE;
           countdown = CYCLE_INTERVAL / 1000;
           stopMotors();
         }
       }
 
-      // ==== Debounce for Motor1 Button (Modified for retriggerable 10s) ====
+      // --- Debounce for Motor1 Button ---
       const unsigned long DEBOUNCE_S1 = 50;
       static int lastRawS1 = HIGH;
       static unsigned long lastS1Debounce = 0;
@@ -397,22 +444,28 @@ void loop() {
       }
       lastRawS1 = rawS1;
 
-      // Remove motor1Handled and stableS1 check to allow retrigger
-      if ((now - lastS1Debounce) > DEBOUNCE_S1) {
-        if (rawS1 == LOW) {  // Press detected
-          motor1Start = now;  // Reset start time to now
-          motor1Active = true;
-          digitalWrite(MOTOR1_RELAY_PIN, HIGH);
-          Serial.println("Motor1 retriggered");
-        }
+      // Manual trigger for Motor1
+      if (digitalRead(SWITCH1_PIN) == LOW) {
+        motor1Start = now;
+        motor1Active = true;
       }
 
+      // Auto-trigger Motor1 at 20s remaining (once per cycle)
+      if (!motor1Active && !motor1AutoTriggered && countdown == 20) {
+        motor1Start = now;
+        motor1Active = true;
+        motor1AutoTriggered = true;
+      }
 
-      // --- Update Motors and Magnet ---
+      // --- Update Motor1 status ---
       updateMotor1(now);
+
+      // --- Stop Motor2 if hit target or time is almost up ---
       if (motor2Running && (motor2Hits >= MOTOR2_STOP_TARGET || (now - activePhaseStart >= CYCLE_ACTIVE - 10000))) {
         motor2Running = false;
       }
+
+      // --- Update Motor2 and other components ---
       driveMotor2();
       checkMotor2Piezo(now);
       updateMagnet(now);
@@ -420,4 +473,3 @@ void loop() {
       break;
   }
 }
-
