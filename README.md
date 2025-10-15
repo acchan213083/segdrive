@@ -1,133 +1,133 @@
-# Arduino Timing Controller with Relay, PWM Motor, Electromagnet, and 7-Segment Display
+# Arduinoタイミングコントローラー（リレー・PWMモーター・電磁石・7セグメントディスプレイ付き）
 
-This project uses an Arduino Uno to control two DC motors and one electromagnet module with precise timing logic. A TM1637 4-digit 7-segment LED display provides countdown and cycle feedback. The system performs timed cycles with synchronized motor and electromagnet activation, user input handling, and visual feedback.
+このプロジェクトは、Arduino Unoを使用して2つのDCモーターと1つの電磁石モジュールを正確なタイミングロジックで制御します。TM1637の4桁7セグメントLEDディスプレイにより、カウントダウンとサイクルの進行状況を表示します。システムは、モーターと電磁石の同期動作、ユーザー入力の処理、視覚的なフィードバックを伴うタイミング制御サイクルを実行します。
 
-## 🔧 Hardware Components
+## 🔧 使用部品
 
 - Arduino Uno  
-- L298 Motor Driver (PWM-compatible pins required for Motor2)  
-- DC Motors ×2 (e.g., RE-280RA)  
-- Electromagnet ×1 (e.g., KEYESTUDIO)  
-- TM1637 4-digit 7-segment LED display  
-- Push Button Switches ×2 (Start and Motor1)  
-- Piezo sensor for Motor2 stop  
-- External power supply (recommended for motors and electromagnet)  
-- Relay modules for Motor1 and Motor2 status indication (optional)
+- L298モータードライバ（Motor2にはPWM対応ピンが必要）  
+- DCモーター ×2（例：RE-280RA）  
+- 電磁石 ×1（例：KEYESTUDIO）  
+- TM1637 4桁7セグメントLEDディスプレイ  
+- プッシュボタンスイッチ ×2（スタート用とMotor1用）  
+- Motor2停止用の圧電センサー  
+- 外部電源（モーターと電磁石用に推奨）  
+- Motor1およびMotor2の状態表示用リレーモジュール（任意）
 
-## 📍 Pin Configuration
+## 📍 ピン設定
 
-| Component                    | Arduino Pin |
+| コンポーネント               | Arduinoピン |
 |-----------------------------|-------------|
-| Electromagnet               | D2          |
+| 電磁石                      | D2          |
 | TM1637 CLK                  | D4          |
 | TM1637 DIO                  | D5          |
-| Start Switch Input          | D6          |
-| Motor1 Switch Input         | D7          |
-| Motor2 Piezo Input          | D8          |
-| Motor1 Status Output (Relay)| D9          |
-| Motor2 Status Output (Relay)| D10         |
-| Motor2 IN1 (PWM)            | D11         |
-| Motor2 IN2 (PWM)            | D12         |
-| LED Indicator               | D13         |
+| スタートスイッチ入力        | D6          |
+| Motor1スイッチ入力          | D7          |
+| Motor2圧電センサー入力      | D8          |
+| Motor1状態出力（リレー）    | D9          |
+| Motor2状態出力（リレー）    | D10         |
+| Motor2 IN1（PWM）           | D11         |
+| Motor2 IN2（PWM）           | D12         |
+| LEDインジケーター           | D13         |
 
-> ⚠️ Note: Motor2 IN1 and IN2 must be connected to PWM-capable pins on the Arduino Uno.  
-> D9 and D10 are digital output pins that go HIGH when Motor1 or Motor2 is running.  
-> Both switches use `INPUT_PULLUP` configuration.
+> ⚠️ 注意：Motor2のIN1およびIN2は、PWM対応のArduino Unoピンに接続する必要があります。  
+> D9およびD10は、Motor1またはMotor2が動作中にHIGHになります。  
+> 両方のスイッチは `INPUT_PULLUP` 設定を使用しています。
 
-## ⏱️ Operation Overview
+## ⏱️ 動作概要
 
-- System starts in **READY_PHASE** with scrolling "READY" display.  
-- Pressing the **start switch** transitions to **COOL_PHASE** (5-second rest interval).  
-- After the rest interval, the system enters **ACTIVE_PHASE** (30-second active cycle).  
-- The program repeats **10 full cycles**, alternating between active and cool phases.  
-- After the 10th cycle, the display scrolls `FIN` and the system resets.
+- システムは **READY_PHASE** で起動し、「READY」メッセージがスクロール表示されます。  
+- **スタートスイッチ**を押すと、**COOL_PHASE**（5秒の休止）に移行します。  
+- 休止後、システムは **ACTIVE_PHASE**（30秒の動作サイクル）に入ります。  
+- このサイクルは、アクティブとクールフェーズを交互に **10回繰り返し**ます。  
+- 10回目のサイクル終了後、ディスプレイに `FIN` がスクロール表示され、システムがリセットされます。
 
-## 🔹 Motor1 Switch Control
+## 🔹 Motor1スイッチ制御
 
-- Pressing the **momentary switch (D7)** during ACTIVE_PHASE triggers Motor1 for **10 seconds**.  
-- **Each press resets the 10-second timer**, so repeated presses **extend the runtime**.  
-- Motor1 stops immediately if the system transitions to COOL_PHASE or READY_PHASE.  
-- While Motor1 is active, **D9 goes HIGH**, allowing relay-based control of external devices.
-- If no manual switch input is detected, Motor1 will **automatically activate at the 20-second mark** during ACTIVE_PHASE.
+- **ACTIVE_PHASE** 中に **モーメンタリースイッチ（D7）** を押すと、Motor1が **10秒間起動**します。  
+- **押すたびに10秒タイマーがリセット**されるため、連続して押すことで動作時間を延長できます。  
+- フェーズがCOOLまたはREADYに移行すると、Motor1は即座に停止します。  
+- Motor1が動作中は、**D9がHIGH**になり、外部機器のリレー制御が可能になります。  
+- スイッチ入力がない場合、Motor1は **ACTIVE_PHASEの残り20秒時点で自動起動**します。
 
-## 🔹 Motor2 Operation
+## 🔹 Motor2の動作
 
-- Motor2 runs automatically during **ACTIVE_PHASE**.  
-- Pressing the **piezo sensor (D8)** increments a counter.  
-- After **5 piezo hits**, Motor2 stops for the remainder of the cycle.  
-- If no piezo hits occur, Motor2 will **automatically stop when 10 seconds remain** in the ACTIVE_PHASE countdown.  
-- While active, **D10 goes HIGH**, enabling relay-based control if needed.
+- Motor2は **ACTIVE_PHASE** 中に自動的に起動します。  
+- **圧電センサー（D8）**を押すと、ヒットカウントが増加します。  
+- **5回ヒット**すると、Motor2はそのサイクルの残り時間中停止します。  
+- ヒットがない場合でも、**残り10秒になると自動的に停止**します。  
+- Motor2が動作中は、**D10がHIGH**になり、リレー制御が可能です。
 
-## 🔹 7-Segment Display
+## 🔹 7セグメントディスプレイ
 
-- **Left 2 digits**: countdown seconds remaining in the phase.  
-- **Right 2 digits**: current cycle number.  
-- During Motor1's 10-second timer, the corresponding digit rotates to indicate Motor1 activity.  
-- READY_PHASE features a scrolling "READY" message.  
-- After 10 cycles, the display scrolls `FIN`.
+- **左2桁**：フェーズの残り秒数  
+- **右2桁**：現在のサイクル番号  
+- Motor1の10秒タイマー中は、対応する桁が回転表示されます。  
+- READY_PHASEでは「READY」メッセージがスクロール表示されます。  
+- 10サイクル終了後、「FIN」がスクロール表示されます。
 
-## 🔹 Active Phase Behavior
+## 🔹 ACTIVEフェーズの動作
 
-- **30-second active phase**:  
-  - Motor2 runs automatically.  
-  - Motor1 can be triggered by the switch for 10 seconds, with each press extending runtime.  
-  - Electromagnet activates at the start of each cycle for 10 seconds.  
-- Motor1 respects phase boundaries: stops if phase changes.  
-- Countdown updates every second using `millis()` (non-blocking).
+- **30秒のアクティブフェーズ**では：  
+  - Motor2が自動的に起動  
+  - Motor1はスイッチ操作で10秒間起動（押すたびに延長可能）  
+  - 電磁石は各サイクルの開始時に10秒間起動  
+- Motor1はフェーズの境界を尊重し、フェーズ変更時に停止します。  
+- カウントダウンは `millis()` を使用して毎秒更新（非ブロッキング）
 
-## 🔹 Cool Phase Behavior
+## 🔹 COOLフェーズの動作
 
-- **5-second rest interval**:  
-  - Motors are stopped.  
-  - READY scroll animation is not active to prevent 7-segment flicker.  
-  - Electromagnet remains off.
+- **5秒の休止フェーズ**では：  
+  - モーターはすべて停止  
+  - READYスクロールアニメーションは非表示（ちらつき防止）  
+  - 電磁石はOFFのまま
 
-## 🎚️ PWM Motor Control
+## 🎚️ PWMモーター制御
 
-- Motor2 is controlled using `analogWrite()` for smooth speed control.  
-- PWM power level is set to 255 by default.
+- Motor2は `analogWrite()` を使用して滑らかな速度制御を行います。  
+- PWM出力はデフォルトで255（最大速度）に設定されています。
 
-## 🧲 Electromagnet Control
+## 🧲 電磁石制御
 
-- The electromagnet is activated at the start of each active cycle for 10 seconds.  
-- Its timing is independent and does not block other operations.
+- 電磁石は各アクティブサイクルの開始時に10秒間起動します。  
+- 他の処理を妨げない独立したタイミング制御です。
 
-## ⌚ Timing Logic
+## ⌚ タイミングロジック
 
-- All timing uses `millis()` to allow non-blocking countdowns.  
-- Motor1’s 10-second timer **resets on every button press** during ACTIVE_PHASE but cancels if phase changes.  
-- Piezo input is debounced with 80 ms to prevent false triggers.  
-- Motor2 automatically stops when 10 seconds remain in ACTIVE_PHASE, even without piezo activation.
+- すべてのタイミングは `millis()` を使用し、非ブロッキングで処理されます。  
+- Motor1の10秒タイマーは **ACTIVE_PHASE中にボタンを押すたびにリセット**されますが、フェーズ変更でキャンセルされます。  
+- 圧電センサー入力は80msのデバウンス処理で誤検出を防止します。  
+- Motor2はヒットがなくても、ACTIVE_PHASEの残り10秒で自動停止します。
 
-## 📄 Code Features
+## 📄 コードの特徴
 
-- Motor1: relay-controlled, **10-second timer extended on repeated presses** during ACTIVE_PHASE  
-- Motor2: PWM speed control, stops after 5 piezo hits **or automatically when 10 seconds remain in ACTIVE_PHASE**  
-- Non-blocking phase countdown using `millis()`  
-- Electromagnet: independent 10-second activation  
-- 7-segment display: countdown, cycle, and Motor1 rotation animation  
-- Scrollable READY and FIN messages  
-- Relay-compatible status outputs for Motor1 and Motor2  
-- Modular functions for motor control, display, and magnet timing
+- Motor1：リレー制御、ACTIVE_PHASE中にボタンを繰り返し押すことで10秒タイマーを延長可能  
+- Motor2：PWM速度制御、圧電センサーで5回ヒットすると停止、またはACTIVE_PHASEの残り10秒で自動停止  
+- `millis()` を使用した非ブロッキングなフェーズカウントダウン  
+- 電磁石：独立した10秒間の起動制御  
+- 7セグメントディスプレイ：カウントダウン、サイクル番号、Motor1の回転アニメーション表示  
+- READYとFINメッセージのスクロール表示機能  
+- Motor1とMotor2のリレー対応状態出力（D9/D10）  
+- モーター制御、表示、電磁石タイミングを分離したモジュール関数構成
 
-## 🚀 Getting Started
+## 🚀 はじめ方
 
-1. Connect all components according to the pin configuration.  
-2. Upload the Arduino sketch.  
-3. Power motors and electromagnet with an external supply.  
-4. Press the start switch to initiate the system.  
-5. Observe countdown cycles, Motor2 operation, Motor1 rotation animation, piezo sensor detection, and electromagnet activation.  
-6. Use D9 and D10 to control relays or monitor motor activity externally.
+1. ピン設定に従ってすべての部品を接続する  
+2. Arduinoスケッチをアップロードする  
+3. モーターと電磁石に外部電源を供給する  
+4. スタートスイッチを押してシステムを起動する  
+5. カウントダウンサイクル、Motor2の動作、Motor1の回転アニメーション、圧電センサーの検出、電磁石の起動を確認する  
+6. D9およびD10を使用して、リレー制御や外部機器のモニタリングを行う
 
-## 🛠️ Customization Ideas
+## 🛠️ カスタマイズのアイデア
 
-- Adjust Motor2 PWM power for speed tuning.  
-- Adjust display update intervals for smoother animations.  
-- Add buzzer or visual feedback during electromagnet activation or Motor1 operation.  
-- Display additional messages after `FIN`.  
-- Use D9/D10 to trigger external devices like fans, lights, or alarms.
+- Motor2のPWM出力を調整して速度を最適化  
+- ディスプレイの更新間隔を調整してアニメーションを滑らかに  
+- 電磁石やMotor1の動作中にブザーやLEDなどのフィードバックを追加  
+- `FIN`表示後に追加メッセージを表示する  
+- D9/D10を使ってファン・ライト・アラームなど外部機器を制御する
 
-## 📜 License
+## 📜 ライセンス
 
-This project is licensed under the MIT License.  
-See the [LICENSE](LICENSE) file for details.
+このプロジェクトはMITライセンスのもとで提供されています。  
+詳細は [LICENSE](LICENSE) ファイルをご確認ください。
