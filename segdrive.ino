@@ -23,480 +23,486 @@ SOFTWARE.
 
 */
 
-#include <TM1637Display.h> // Include the library for controlling the TM1637 4-digit 7-segment LED display
+#include <TM1637Display.h> // TM1637 4桁7セグメントLEDディスプレイを制御するライブラリを読み込む
 
-// ==== Pin Configuration ====
-// Define all hardware connections to the Arduino board
-#define CLK 4                  // TM1637 display clock pin
-#define DIO 5                  // TM1637 display data pin
-#define SWITCH_START 6         // Start button input pin (active LOW when pressed)
-#define SWITCH1_PIN 7          // Motor1 control switch input pin (active LOW when pressed)
-#define SWITCH2_PIN 8          // Piezo sensor input pin for Motor2 hit detection (active LOW pulse)
-#define MOTOR1_RELAY_PIN 9     // Output pin to control Motor1 relay (HIGH = ON)
-#define MOTOR2_RELAY_PIN 10    // Output pin to control Motor2 relay (HIGH = ON)
-#define MOTOR2_IN1 11          // Motor2 direction control pin 1 (PWM capable)
-#define MOTOR2_IN2 12          // Motor2 direction control pin 2 (PWM capable)
-#define ELECTROMAGNET_PIN 2    // Output pin to control electromagnet (LOW = ON)
-#define LED 13                 // Output pin for LED indicator (HIGH = ON)
+// ==== ピン設定 ====
+// Arduinoボードに接続された各ハードウェアのピン番号を定義
+#define CLK 4                  // TM1637ディスプレイのクロックピン
+#define DIO 5                  // TM1637ディスプレイのデータピン
+#define SWITCH_START 6         // スタートボタンの入力ピン（LOWで押下）
+#define SWITCH1_PIN 7          // Motor1制御スイッチの入力ピン（LOWで押下）
+#define SWITCH2_PIN 8          // Motor2用の圧電センサー入力ピン（LOWパルスでヒット検出）
+#define MOTOR1_RELAY_PIN 9     // Motor1のリレー制御出力ピン（HIGHでON）
+#define MOTOR2_RELAY_PIN 10    // Motor2のリレー制御出力ピン（HIGHでON）
+#define MOTOR2_IN1 11          // Motor2の方向制御ピン1（PWM可能）
+#define MOTOR2_IN2 12          // Motor2の方向制御ピン2（PWM可能）
+#define ELECTROMAGNET_PIN 2    // 電磁石の制御出力ピン（LOWでON）
+#define LED 13                 // LEDインジケータの出力ピン（HIGHで点灯）
 
-TM1637Display display(CLK, DIO); // Create a display object using CLK and DIO pins
+TM1637Display display(CLK, DIO); // CLKとDIOピンを使ってディスプレイオブジェクトを初期化
 
-// ==== Segment Definitions for Custom Characters ====
-// Define custom segment bitmaps for scrolling text on the display
-const uint8_t MY_SEG_R = 0b01010000; // Segment pattern for 'R'
-const uint8_t MY_SEG_E = 0b01111001; // Segment pattern for 'E'
-const uint8_t MY_SEG_A = 0b01110111; // Segment pattern for 'A'
-const uint8_t MY_SEG_D = 0b01011110; // Segment pattern for 'D'
-const uint8_t MY_SEG_Y = 0b01101110; // Segment pattern for 'Y'
-const uint8_t MY_SEG_F = 0b01110001; // Segment pattern for 'F'
-const uint8_t MY_SEG_I = 0b00000110; // Segment pattern for 'I'
-const uint8_t MY_SEG_N = 0b01010100; // Segment pattern for 'N'
-const uint8_t MY_SEG_S = 0b01101101; // Segment pattern for 'S'
-const uint8_t MY_SEG_H = 0b01110110; // Segment pattern for 'H'
-const uint8_t MY_SEG_T = 0b01111000; // Segment pattern for 'T'
-const uint8_t MY_SEG_BLANK = 0x00;   // Blank segment for spacing
+// ==== カスタム文字のセグメント定義 ====
+// ディスプレイにスクロール表示する文字のセグメントパターンを定義
+const uint8_t MY_SEG_R = 0b01010000; // 'R'のセグメントパターン
+const uint8_t MY_SEG_E = 0b01111001; // 'E'のセグメントパターン
+const uint8_t MY_SEG_A = 0b01110111; // 'A'のセグメントパターン
+const uint8_t MY_SEG_D = 0b01011110; // 'D'のセグメントパターン
+const uint8_t MY_SEG_Y = 0b01101110; // 'Y'のセグメントパターン
+const uint8_t MY_SEG_F = 0b01110001; // 'F'のセグメントパターン
+const uint8_t MY_SEG_I = 0b00000110; // 'I'のセグメントパターン
+const uint8_t MY_SEG_N = 0b01010100; // 'N'のセグメントパターン
+const uint8_t MY_SEG_S = 0b01101101; // 'S'のセグメントパターン
+const uint8_t MY_SEG_H = 0b01110110; // 'H'のセグメントパターン
+const uint8_t MY_SEG_T = 0b01111000; // 'T'のセグメントパターン
+const uint8_t MY_SEG_BLANK = 0x00;   // 空白表示用のセグメント（すべてOFF）
 
-// ==== Timing Constants ====
-// Define durations and thresholds for motors and phase transitions
-const unsigned long MOTOR1_DURATION = 10000; // Motor1 runs for 10 seconds per activation
-const unsigned long MOTOR2_PWM = 255;        // Motor2 runs at full PWM speed (255)
-const unsigned long PIEZO_DEBOUNCE = 80;     // Debounce time for piezo sensor input (in milliseconds)
-const int MOTOR2_STOP_TARGET = 5;            // Motor2 stops after detecting 5 piezo hits
-const int MAX_CYCLES = 10;                   // System runs for a maximum of 10 cycles before resetting
-const unsigned long CYCLE_ACTIVE = 30000;    // ACTIVE phase duration: 30 seconds
-const unsigned long CYCLE_INTERVAL = 5000;   // COOL phase duration: 5 seconds
+// ==== タイミング定数 ====
+// モーターやフェーズの動作時間・しきい値を定義
+const unsigned long MOTOR1_DURATION = 10000; // Motor1の動作時間（10秒）
+const unsigned long MOTOR2_PWM = 255;        // Motor2のPWM出力（最大速度）
+const unsigned long PIEZO_DEBOUNCE = 80;     // 圧電センサーのデバウンス時間（ms）
+const int MOTOR2_STOP_TARGET = 5;            // Motor2が停止するヒット数のしきい値
+const int MAX_CYCLES = 10;                   // 最大サイクル数（10回で終了）
+const unsigned long CYCLE_ACTIVE = 30000;    // ACTIVEフェーズの時間（30秒）
+const unsigned long CYCLE_INTERVAL = 5000;   // COOLフェーズの休止時間（5秒）
 
-// ==== System State Variables ====
-// Variables to track current status of motors, sensors, timers, and phases
-unsigned long activePhaseStart = 0;          // Timestamp when ACTIVE phase started
-bool motor1Active = false;                   // Flag indicating if Motor1 is currently running
-unsigned long motor1Start = 0;               // Timestamp when Motor1 was last triggered
-bool motor2Running = false;                  // Flag indicating if Motor2 is currently running
-int motor2Hits = 0;                          // Counter for piezo sensor hits during ACTIVE phase
-unsigned long lastPiezo = 0;                 // Timestamp of last piezo sensor activation
-int lastPiezoState = HIGH;                   // Previous state of piezo sensor input
-unsigned long lastTick = 0;                  // Timestamp of last countdown tick
-int countdown = 0;                           // Countdown timer in seconds
-int cycle = 0;                               // Current cycle number (0 to MAX_CYCLES)
-enum Phase { READY_PHASE, COOL_PHASE, ACTIVE_PHASE }; // Enum to represent system phases
-Phase phase = READY_PHASE;                   // Initial phase set to READY
-bool magnetActive = false;                   // Flag indicating if electromagnet is currently active
-unsigned long magnetStart = 0;               // Timestamp when electromagnet was activated
-bool motor1AutoTriggered = false;            // Flag to prevent multiple auto-triggers of Motor1 per cycle
+// ==== システム状態変数 ====
+// モーター、センサー、タイマー、フェーズの現在の状態を管理する変数群
+unsigned long activePhaseStart = 0;          // ACTIVEフェーズが開始された時刻
+bool motor1Active = false;                   // Motor1が現在動作中かどうか
+unsigned long motor1Start = 0;               // Motor1が起動された時刻
+bool motor2Running = false;                  // Motor2が現在動作中かどうか
+int motor2Hits = 0;                          // ACTIVEフェーズ中の圧電センサーのヒット数
+unsigned long lastPiezo = 0;                 // 最後に圧電センサーが反応した時刻
+int lastPiezoState = HIGH;                   // 圧電センサーの前回の状態（HIGHまたはLOW）
+unsigned long lastTick = 0;                  // カウントダウンの最後の更新時刻
+int countdown = 0;                           // 残り時間（秒単位）
+int cycle = 0;                               // 現在のサイクル番号（0〜MAX_CYCLES）
+enum Phase { READY_PHASE, COOL_PHASE, ACTIVE_PHASE }; // フェーズを表す列挙型
+Phase phase = READY_PHASE;                   // 初期フェーズはREADY
+bool magnetActive = false;                   // 電磁石が現在ONかどうか
+unsigned long magnetStart = 0;               // 電磁石がONになった時刻
+bool motor1AutoTriggered = false;            // Motor1が自動起動されたかどうかのフラグ
 
-// ==== Display Scroll Variables ====
-// Variables used for scrolling "READY" message on the display
-unsigned long lastReadyScroll = 0;           // Timestamp of last scroll update
-int readyScrollIndex = -4;                   // Scroll index position (starts off-screen)
-const uint8_t MSG_READY[] = { MY_SEG_R, MY_SEG_E, MY_SEG_A, MY_SEG_D, MY_SEG_Y }; // Segment array for "READY"
+// ==== READYメッセージスクロール用変数 ====
+// ディスプレイに"READY"をスクロール表示するための制御変数
+unsigned long lastReadyScroll = 0;           // 最後にスクロール更新した時刻
+int readyScrollIndex = -4;                   // スクロール位置（初期は画面外）
+const uint8_t MSG_READY[] = { MY_SEG_R, MY_SEG_E, MY_SEG_A, MY_SEG_D, MY_SEG_Y }; // "READY"のセグメント配列
 
-// ==== Start Button Variables ====
-// Variables used to detect single and double presses of the start button
-unsigned long lastStartTime = 0;             // Timestamp of last start button press
-int startCount = 0;                          // Number of presses detected within interval
-const unsigned long DOUBLE_PRESS_INTERVAL = 500; // Max interval (ms) between presses to count as double press
+// ==== スタートボタン検出用変数 ====
+// スタートボタンのシングル・ダブルプレスを検出するための変数
+unsigned long lastStartTime = 0;             // 最後にスタートボタンが押された時刻
+int startCount = 0;                          // 検出された押下回数
+const unsigned long DOUBLE_PRESS_INTERVAL = 500; // ダブルプレス判定の最大間隔（ms）
 
-// ==== Segment Rotation Function (180° flip) ====
-// Rotates a segment pattern to flip the digit upside down for display orientation
+// ==== セグメント反転関数（180度回転） ====
+// セグメントパターンを上下反転して表示方向を調整する関数
 uint8_t rotate180(uint8_t seg) {
   uint8_t r = 0;
-  if (seg & 0b00000001) r |= 0b00001000;     // Map bottom segment to top-left
-  if (seg & 0b00000010) r |= 0b00010000;     // Map bottom-left to top-right
-  if (seg & 0b00000100) r |= 0b00100000;     // Map bottom-right to middle
-  if (seg & 0b00001000) r |= 0b00000001;     // Map top-left to bottom
-  if (seg & 0b00010000) r |= 0b00000010;     // Map top-right to bottom-left
-  if (seg & 0b00100000) r |= 0b00000100;     // Map middle to bottom-right
-  if (seg & 0b01000000) r |= 0b01000000;     // Keep center segment unchanged
-  return r;                                  // Return rotated segment pattern
+  if (seg & 0b00000001) r |= 0b00001000;     // 下部セグメント → 左上
+  if (seg & 0b00000010) r |= 0b00010000;     // 左下 → 右上
+  if (seg & 0b00000100) r |= 0b00100000;     // 右下 → 中央
+  if (seg & 0b00001000) r |= 0b00000001;     // 左上 → 下部
+  if (seg & 0b00010000) r |= 0b00000010;     // 右上 → 左下
+  if (seg & 0b00100000) r |= 0b00000100;     // 中央 → 右下
+  if (seg & 0b01000000) r |= 0b01000000;     // 中央縦セグメントはそのまま
+  return r;                                  // 反転後のセグメントパターンを返す
 }
 
-// ==== Display Time and Cycle with Colon ====
-// Displays countdown and cycle number on the 7-segment display
-// Adds colon indicators based on piezo hit count for visual feedback
+
+// ==== 時間とサイクル数の表示（コロン付き） ====
+// カウントダウン時間とサイクル番号を7セグメントディスプレイに表示する
+// 圧電センサーのヒット数に応じてコロン（点滅や点灯）を追加する
 void showTimeCycleWithHits(int sec, int cyc, int hits, unsigned long now) {
-  static bool colonBlinkState = false;       // State for blinking colon animation
-  static unsigned long lastBlinkTime = 0;    // Timestamp of last colon blink
-  const uint8_t COLON_SEGMENT = 0b10000000;  // Bitmask to enable colon segment
+  static bool colonBlinkState = false;       // コロンの点滅状態を保持するフラグ
+  static unsigned long lastBlinkTime = 0;    // 最後にコロンを点滅させた時刻
+  const uint8_t COLON_SEGMENT = 0b10000000;  // コロン表示用のビットマスク
 
-  // Extract digits from seconds and cycle values
-  int s1 = (sec / 10) % 10;                  // Tens digit of seconds
-  int s0 = sec % 10;                         // Ones digit of seconds
-  int c1 = (cyc / 10) % 10;                  // Tens digit of cycle
-  int c0 = cyc % 10;                         // Ones digit of cycle
+  // 秒数とサイクル数から各桁の数字を抽出
+  int s1 = (sec / 10) % 10;                  // 秒の十の位
+  int s0 = sec % 10;                         // 秒の一の位
+  int c1 = (cyc / 10) % 10;                  // サイクルの十の位
+  int c0 = cyc % 10;                         // サイクルの一の位
 
-  // Encode digits and rotate them for upside-down display
+  // 数字をエンコードして上下反転させ、表示用の配列に格納
   uint8_t d[4] = {
-    rotate180(display.encodeDigit(c0)),      // Rightmost digit: cycle ones
-    rotate180(display.encodeDigit(c1)),      // Next digit: cycle tens
-    rotate180(display.encodeDigit(s0)),      // Next digit: seconds ones
-    rotate180(display.encodeDigit(s1))       // Leftmost digit: seconds tens
+    rotate180(display.encodeDigit(c0)),      // 一番右：サイクルの一の位
+    rotate180(display.encodeDigit(c1)),      // 次：サイクルの十の位
+    rotate180(display.encodeDigit(s0)),      // 次：秒の一の位
+    rotate180(display.encodeDigit(s1))       // 一番左：秒の十の位
   };
 
-  // Add colon indicators based on hit count
+  // ヒット数に応じてコロンを追加
   switch (hits) {
     case 1:
-      // If 1 hit detected, light up both colon positions (cycle and time)
-      d[1] |= COLON_SEGMENT; // Add colon to cycle digit
-      d[2] |= COLON_SEGMENT; // Add colon to time digit
+      // ヒットが1回 → サイクルと時間の両方にコロンを表示
+      d[1] |= COLON_SEGMENT; // サイクル側にコロン追加
+      d[2] |= COLON_SEGMENT; // 時間側にコロン追加
       break;
     case 2:
-      // If 2 hits detected, light up colon between cycle digits only
+      // ヒットが2回 → サイクル側のみコロン表示
       d[1] |= COLON_SEGMENT;
       break;
     case 3:
-      // If 3 hits detected, light up colon between time digits only
+      // ヒットが3回 → 時間側のみコロン表示
       d[2] |= COLON_SEGMENT;
       break;
     case 4:
-      // If 4 hits detected, blink colon between cycle and time digits alternately
-      if (now - lastBlinkTime >= 500) { // Check if 500ms has passed since last blink
-        colonBlinkState = !colonBlinkState; // Toggle blink state
-        lastBlinkTime = now; // Update last blink timestamp
+      // ヒットが4回 → サイクルと時間のコロンを交互に点滅
+      if (now - lastBlinkTime >= 500) { // 最後の点滅から500ms経過したか確認
+        colonBlinkState = !colonBlinkState; // 点滅状態を反転
+        lastBlinkTime = now; // 点滅時刻を更新
       }
       if (colonBlinkState)
-        d[1] |= COLON_SEGMENT; // Show colon on cycle digit
+        d[1] |= COLON_SEGMENT; // サイクル側にコロン表示
       else
-        d[2] |= COLON_SEGMENT; // Show colon on time digit
+        d[2] |= COLON_SEGMENT; // 時間側にコロン表示
       break;
   }
 
-  display.setSegments(d); // Send final digit array to the display
+  display.setSegments(d); // 最終的な表示データをディスプレイに送信
+}
 
-// ==== Stop All Motors ====
-// Turns off all motors and resets motor-related flags
+// ==== 全モーター停止処理 ====
+// すべてのモーターを停止し、関連するフラグをリセットする
 void stopMotors() {
-  motor1Active = false; // Reset Motor1 active flag
-  motor2Running = false; // Reset Motor2 running flag
-  motor2Hits = 0; // Reset piezo hit counter
-  digitalWrite(MOTOR1_RELAY_PIN, LOW); // Turn off Motor1 relay
-  digitalWrite(MOTOR2_RELAY_PIN, LOW); // Turn off Motor2 relay
-  analogWrite(MOTOR2_IN1, 0); // Stop Motor2 PWM output on IN1
-  analogWrite(MOTOR2_IN2, 0); // Stop Motor2 PWM output on IN2
-  digitalWrite(LED, LOW); // Turn off LED indicator
+  motor1Active = false; // Motor1の動作フラグをOFF
+  motor2Running = false; // Motor2の動作フラグをOFF
+  motor2Hits = 0; // Motor2のヒットカウントをリセット
+  digitalWrite(MOTOR1_RELAY_PIN, LOW); // Motor1のリレーをOFF
+  digitalWrite(MOTOR2_RELAY_PIN, LOW); // Motor2のリレーをOFF
+  analogWrite(MOTOR2_IN1, 0); // Motor2のPWM出力を停止（IN1）
+  analogWrite(MOTOR2_IN2, 0); // Motor2のPWM出力を停止（IN2）
+  digitalWrite(LED, LOW); // LEDインジケータをOFF
 }
 
-// ==== Motor1 Control ====
-// Handles Motor1 timing and phase-based shutdown
+// ==== Motor1制御処理 ====
+// Motor1の動作時間とフェーズに応じて停止処理を行う
 void updateMotor1(unsigned long now) {
-  // Check if Motor1 has been running for longer than its duration
+  // Motor1が動作中で、設定時間を超えた場合は停止
   if (motor1Active && (now - motor1Start >= MOTOR1_DURATION)) {
-    motor1Active = false; // Stop Motor1
-    digitalWrite(MOTOR1_RELAY_PIN, LOW); // Turn off Motor1 relay
-    // Serial.println("Motor1 stopped after 10s"); // Optional debug output
+    motor1Active = false; // Motor1の動作フラグをOFF
+    digitalWrite(MOTOR1_RELAY_PIN, LOW); // Motor1のリレーをOFF
+    // Serial.println("Motor1 stopped after 10s"); // デバッグ用出力（任意）
   }
 
-  // If phase has changed and Motor1 is still running, stop it immediately
+  // フェーズがACTIVE以外でMotor1が動作中なら強制停止
   if (phase != ACTIVE_PHASE && motor1Active) {
-    motor1Active = false; // Stop Motor1
-    digitalWrite(MOTOR1_RELAY_PIN, LOW); // Turn off Motor1 relay
-    // Serial.println("Motor1 stopped due to phase change"); // Optional debug output
+    motor1Active = false; // Motor1の動作フラグをOFF
+    digitalWrite(MOTOR1_RELAY_PIN, LOW); // Motor1のリレーをOFF
+    // Serial.println("Motor1 stopped due to phase change"); // デバッグ用出力（任意）
   }
 
-  // If Motor1 is active, keep the relay ON
+  // Motor1が動作中ならリレーをONに維持
   if (motor1Active) {
-    digitalWrite(MOTOR1_RELAY_PIN, HIGH); // Keep Motor1 relay ON
-    // Serial.println("Motor1 running..."); // Optional debug output
+    digitalWrite(MOTOR1_RELAY_PIN, HIGH); // Motor1のリレーをON
+    // Serial.println("Motor1 running..."); // デバッグ用出力（任意）
   }
 }
 
-// ==== Motor2 Drive ====
-// Controls Motor2 during the ACTIVE phase.
-// Uses PWM to drive Motor2 forward and turns on the relay and LED.
-// Stops the motor and turns off indicators when not running.
+
+// ==== Motor2駆動処理 ====
+// ACTIVEフェーズ中にMotor2を制御する
+// PWMで前進させ、リレーとLEDをONにする
+// 動作していない場合はモーターと表示を停止する
 void driveMotor2() {
-  // If Motor2 is running and phase is ACTIVE, drive it forward
+  // Motor2が動作中かつフェーズがACTIVEなら前進動作
   if (motor2Running && phase == ACTIVE_PHASE) {
-    analogWrite(MOTOR2_IN1, MOTOR2_PWM); // Set IN1 to full PWM speed
-    analogWrite(MOTOR2_IN2, 0); // Set IN2 to 0 for forward direction
-    digitalWrite(MOTOR2_RELAY_PIN, HIGH); // Turn ON Motor2 relay
-    digitalWrite(LED, HIGH); // Turn ON LED indicator
+    analogWrite(MOTOR2_IN1, MOTOR2_PWM); // IN1にPWM出力（最大速度）
+    analogWrite(MOTOR2_IN2, 0);          // IN2は0で前進方向
+    digitalWrite(MOTOR2_RELAY_PIN, HIGH); // Motor2のリレーをON
+    digitalWrite(LED, HIGH);              // LEDインジケータをON
   } else {
-    // If Motor2 is not running or phase is not ACTIVE, stop it
-    analogWrite(MOTOR2_IN1, 0); // Stop PWM on IN1
-    analogWrite(MOTOR2_IN2, 0); // Stop PWM on IN2
-    digitalWrite(MOTOR2_RELAY_PIN, LOW); // Turn OFF Motor2 relay
-    digitalWrite(LED, LOW); // Turn OFF LED indicator
+    // Motor2が停止中、またはフェーズがACTIVEでない場合は停止
+    analogWrite(MOTOR2_IN1, 0);           // IN1のPWM出力を停止
+    analogWrite(MOTOR2_IN2, 0);           // IN2のPWM出力を停止
+    digitalWrite(MOTOR2_RELAY_PIN, LOW);  // Motor2のリレーをOFF
+    digitalWrite(LED, LOW);               // LEDインジケータをOFF
   }
 }
 
-// ==== Piezo Sensor Check for Motor2 ====
-// Detects hits from the piezo sensor during ACTIVE phase.
-// Increments hit count and stops Motor2 when target is reached.
+// ==== Motor2用圧電センサーのヒット検出 ====
+// ACTIVEフェーズ中に圧電センサーのヒットを検出する
+// ヒット数をカウントし、目標数に達したらMotor2を停止する
 void checkMotor2Piezo(unsigned long now) {
-  // If not in ACTIVE phase, just update last piezo state and exit
+  // ACTIVEフェーズ以外ではセンサー状態を更新して終了
   if (phase != ACTIVE_PHASE) {
-    lastPiezoState = digitalRead(SWITCH2_PIN); // Read current piezo state
+    lastPiezoState = digitalRead(SWITCH2_PIN); // 現在のセンサー状態を読み取る
     return;
   }
 
-  int p = digitalRead(SWITCH2_PIN); // Read current piezo input
+  int p = digitalRead(SWITCH2_PIN); // センサーの現在の入力状態を取得
 
-  // Detect falling edge (HIGH to LOW) and debounce
+  // HIGH→LOWの変化（立下り）を検出し、デバウンス処理を行う
   if (lastPiezoState == HIGH && p == LOW && (now - lastPiezo) > PIEZO_DEBOUNCE) {
-    motor2Hits++; // Increment hit counter
-    lastPiezo = now; // Update last hit timestamp
-    Serial.print("Piezo hit count: "); // Debug output
-    Serial.println(motor2Hits); // Show current hit count
+    motor2Hits++;       // ヒットカウントを1増加
+    lastPiezo = now;    // 最後のヒット時刻を更新
+    Serial.print("Piezo hit count: "); // デバッグ出力
+    Serial.println(motor2Hits);        // 現在のヒット数を表示
 
-    // Stop Motor2 if hit count reaches target
+    // ヒット数が目標に達したらMotor2を停止
     if (motor2Hits >= MOTOR2_STOP_TARGET)
       motor2Running = false;
   }
 
-  lastPiezoState = p; // Update last piezo state for next check
+  lastPiezoState = p; // 次回の検出のために状態を保存
 }
 
-// ==== Electromagnet Activation ====
-// Turns ON the electromagnet and records the start time.
+// ==== 電磁石の起動処理 ====
+// 電磁石をONにし、起動時刻を記録する
 void activateMagnet() {
-  digitalWrite(ELECTROMAGNET_PIN, LOW); // Activate electromagnet (LOW = ON)
-  magnetActive = true;                  // Set magnet state to active
-  magnetStart = millis();               // Record the time magnet was turned on
+  digitalWrite(ELECTROMAGNET_PIN, LOW); // 電磁石をON（LOWで起動）
+  magnetActive = true;                  // 電磁石の状態をONに設定
+  magnetStart = millis();               // 起動時刻を記録
 }
 
-// ==== Electromagnet Deactivation after 10s ====
-// Turns OFF the electromagnet after 10 seconds.
+// ==== 電磁石の自動停止処理（10秒後） ====
+// 電磁石がONになってから10秒経過したらOFFにする
 void updateMagnet(unsigned long now) {
-  // Check if magnet is active and 10 seconds have passed
+  // 電磁石がONかつ10秒経過していたらOFFにする
   if (magnetActive && now - magnetStart >= 10000) {
-    digitalWrite(ELECTROMAGNET_PIN, HIGH); // Deactivate magnet (HIGH = OFF)
-    magnetActive = false;                  // Reset magnet state
+    digitalWrite(ELECTROMAGNET_PIN, HIGH); // 電磁石をOFF（HIGHで停止）
+    magnetActive = false;                  // 状態をOFFに更新
   }
 }
 
-// ==== Scroll "READY" Message ====
-// Scrolls the word "READY" across the 4-digit display.
+// ==== "READY"メッセージのスクロール表示 ====
+// ディスプレイに"READY"という文字列をスクロール表示する
 void scrollReadyLoop() {
-  unsigned long now = millis(); // Get current time
-  // Update scroll every 200ms
-  if (now - lastReadyScroll >= 200) {
-    lastReadyScroll = now; // Save scroll timestamp
-    const int len = 5;     // Length of "READY" message
-    uint8_t frame[4];      // Frame buffer for 4 digits
+  unsigned long now = millis(); // 現在時刻を取得
 
-    // Fill frame with rotated characters or blanks
+  // 200msごとにスクロールを更新
+  if (now - lastReadyScroll >= 200) {
+    lastReadyScroll = now; // 最終更新時刻を記録
+    const int len = 5;     // "READY"の文字数
+    uint8_t frame[4];      // 4桁分の表示バッファ
+
+    // 表示バッファに文字または空白を格納
     for (int i = 0; i < 4; i++) {
       int idx = readyScrollIndex - i;
       frame[i] = (idx >= 0 && idx < len) ? rotate180(MSG_READY[idx]) : MY_SEG_BLANK;
     }
 
-    display.setSegments(frame); // Show frame on display
-    readyScrollIndex++;         // Move scroll position
+    display.setSegments(frame); // ディスプレイに表示
+    readyScrollIndex++;         // スクロール位置を進める
 
-    // Reset scroll index after message passes through
+    // メッセージが通過したらスクロール位置をリセット
     if (readyScrollIndex > (len + 3)) readyScrollIndex = -4;
   }
 }
 
-// ==== Scroll Custom Message ====
-// Scrolls any custom message across the display, one frame at a time.
+// ==== 任意メッセージのスクロール表示 ====
+// 任意の文字列をディスプレイにスクロール表示する（180度反転付き）
 void scrollMessage180(const uint8_t* msg, int len, int delayMs) {
-  // Scroll from right to left across the display
+  // メッセージを右から左へスクロール表示
   for (int i = len + 3; i >= 0; i--) {
-    uint8_t frame[4] = { 0 }; // Clear frame buffer
+    uint8_t frame[4] = { 0 }; // 表示バッファを初期化
 
-    // Fill frame with rotated characters or blanks
+    // 表示バッファに文字または空白を格納
     for (int j = 0; j < 4; j++) {
       int idx = i - j;
       frame[3 - j] = (idx >= 0 && idx < len) ? rotate180(msg[len - idx - 1]) : MY_SEG_BLANK;
     }
 
-    display.setSegments(frame); // Show frame on display
-    delay(delayMs);             // Wait before next scroll step
+    display.setSegments(frame); // ディスプレイに表示
+    delay(delayMs);             // 次のフレームまで待機
   }
 }
 
-// ==== Reset System to Initial READY State ====
-// Resets all counters, stops motors, and returns to READY phase.
+// ==== システムの初期化（READY状態へ） ====
+// カウンターや状態をリセットし、READYフェーズに戻す
 void resetSystem() {
-  countdown = 0;                     // Reset countdown timer
-  cycle = 0;                         // Reset cycle counter
-  phase = READY_PHASE;              // Set phase to READY
-  stopMotors();                     // Stop all motors
-  magnetActive = false;             // Reset magnet state
-  digitalWrite(ELECTROMAGNET_PIN, HIGH); // Ensure magnet is OFF
-  lastTick = millis();              // Reset tick timer
-  readyScrollIndex = -4;            // Reset scroll position
-  showTimeCycleWithHits(countdown, cycle, motor2Hits, millis()); // Update display
+  countdown = 0;                     // カウントダウンタイマーをリセット
+  cycle = 0;                         // サイクルカウンターをリセット
+  phase = READY_PHASE;              // フェーズをREADYに設定
+  stopMotors();                     // モーターをすべて停止
+  magnetActive = false;             // 電磁石の状態をOFFに設定
+  digitalWrite(ELECTROMAGNET_PIN, HIGH); // 電磁石をOFFにする
+  lastTick = millis();              // タイマー更新時刻を記録
+  readyScrollIndex = -4;            // スクロール位置を初期化
+  showTimeCycleWithHits(countdown, cycle, motor2Hits, millis()); // ディスプレイを更新
 }
 
-// ==== Arduino Setup ====
-// This function runs once when the Arduino is powered on or reset.
-// It initializes all pins and sets the system to the READY state.
+
+// ==== Arduinoの初期設定 ====
+// Arduinoが起動またはリセットされたときに1回だけ実行される関数
+// ピンのモードを設定し、システムをREADY状態に初期化する
 void setup() {
-  Serial.begin(9600); // Start serial communication for debugging
+  Serial.begin(9600); // デバッグ用にシリアル通信を開始
 
-  // Configure input pins
-  pinMode(SWITCH_START, INPUT_PULLUP); // Start button (active LOW)
-  pinMode(SWITCH1_PIN, INPUT_PULLUP);  // Motor1 control switch (active LOW)
-  pinMode(SWITCH2_PIN, INPUT);         // Piezo sensor input (active LOW pulse)
+  // 入力ピンの設定
+  pinMode(SWITCH_START, INPUT_PULLUP); // スタートボタン（LOWで押下）
+  pinMode(SWITCH1_PIN, INPUT_PULLUP);  // Motor1制御スイッチ（LOWで押下）
+  pinMode(SWITCH2_PIN, INPUT);         // 圧電センサー入力（LOWパルスでヒット検出）
 
-  // Configure output pins
-  pinMode(MOTOR1_RELAY_PIN, OUTPUT);   // Relay for Motor1
-  pinMode(MOTOR2_RELAY_PIN, OUTPUT);   // Relay for Motor2
-  pinMode(MOTOR2_IN1, OUTPUT);         // Motor2 direction control pin 1
-  pinMode(MOTOR2_IN2, OUTPUT);         // Motor2 direction control pin 2
-  pinMode(ELECTROMAGNET_PIN, OUTPUT);  // Electromagnet control pin
-  pinMode(LED, OUTPUT);                // LED indicator
+  // 出力ピンの設定
+  pinMode(MOTOR1_RELAY_PIN, OUTPUT);   // Motor1のリレー制御ピン
+  pinMode(MOTOR2_RELAY_PIN, OUTPUT);   // Motor2のリレー制御ピン
+  pinMode(MOTOR2_IN1, OUTPUT);         // Motor2の方向制御ピン1（PWM対応）
+  pinMode(MOTOR2_IN2, OUTPUT);         // Motor2の方向制御ピン2（PWM対応）
+  pinMode(ELECTROMAGNET_PIN, OUTPUT);  // 電磁石の制御ピン
+  pinMode(LED, OUTPUT);                // LEDインジケータの制御ピン
 
-  // Initialize system state
-  stopMotors();                        // Ensure all motors are stopped
-  digitalWrite(ELECTROMAGNET_PIN, HIGH); // Turn off electromagnet (HIGH = OFF)
-  display.setBrightness(7);            // Set display brightness to maximum
-  resetSystem();                       // Reset system to READY phase
+  // システム状態の初期化
+  stopMotors();                        // すべてのモーターを停止
+  digitalWrite(ELECTROMAGNET_PIN, HIGH); // 電磁石をOFF（HIGHで停止）
+  display.setBrightness(7);            // ディスプレイの明るさを最大に設定
+  resetSystem();                       // READYフェーズにリセット
 }
 
-// ==== Main Loop ====
-// This function runs continuously after setup().
-// It handles button input, phase transitions, motor control, and display updates.
+// ==== メインループ ====
+// setup()の後に繰り返し実行される関数
+// ボタン入力、フェーズの切り替え、モーター制御、表示更新などを処理する
 void loop() {
-  unsigned long now = millis(); // Get current time in milliseconds
+  unsigned long now = millis(); // 現在時刻（ミリ秒）を取得
 
-  // --- Debounce for Start Button ---
-  // Prevents false triggers due to mechanical noise when pressing the button.
-  const unsigned long DEBOUNCE_DELAY = 50; // Debounce threshold in milliseconds
-  static int lastRawStart = HIGH;          // Previous raw state of start button
-  static int stableStart = HIGH;           // Debounced stable state
-  static unsigned long lastStartDebounce = 0; // Last time the button state changed
-  static bool startHandled = false;        // Flag to prevent repeated handling of same press
+  // --- スタートボタンのデバウンス処理 ---
+  // 機械的なノイズによる誤検出を防ぐ
+  const unsigned long DEBOUNCE_DELAY = 50; // デバウンス時間（ms）
+  static int lastRawStart = HIGH;          // 前回の生のボタン状態
+  static int stableStart = HIGH;           // 安定したボタン状態
+  static unsigned long lastStartDebounce = 0; // 最後に状態が変化した時刻
+  static bool startHandled = false;        // 同じ押下の重複処理を防ぐフラグ
 
-  int rawStart = digitalRead(SWITCH_START); // Read current state of start button
+  int rawStart = digitalRead(SWITCH_START); // 現在のボタン状態を読み取る
   if (rawStart != lastRawStart) {
-    lastStartDebounce = now; // Reset debounce timer
-    startHandled = false;    // Allow new press to be handled
+    lastStartDebounce = now; // デバウンスタイマーをリセット
+    startHandled = false;    // 新しい押下として処理可能にする
   }
-  lastRawStart = rawStart; // Update previous raw state
+  lastRawStart = rawStart; // 前回の状態を更新
 
-  // Check if button state is stable after debounce delay
+  // デバウンス時間を超えて状態が安定しているか確認
   if ((now - lastStartDebounce) > DEBOUNCE_DELAY) {
     if (rawStart != stableStart) {
-      stableStart = rawStart; // Update stable state
+      stableStart = rawStart; // 安定状態を更新
       if (stableStart == LOW && !startHandled) {
-        startHandled = true; // Mark this press as handled
+        startHandled = true; // この押下を処理済みにする
 
-        // --- Detect single or double press ---
-        // If pressed twice within interval, treat as double press
+        // --- シングル・ダブルプレスの判定 ---
         if (now - lastStartTime < DOUBLE_PRESS_INTERVAL) startCount++;
         else startCount = 1;
         lastStartTime = now;
 
         if (startCount >= 2) {
-          // Double press: reset system
-          stopMotors(); // Stop all motors
+          // ダブルプレス：システムをリセット
+          stopMotors(); // モーターをすべて停止
           const uint8_t MSG_RESET[] = { MY_SEG_R, MY_SEG_E, MY_SEG_S, MY_SEG_E, MY_SEG_T };
-          scrollMessage180(MSG_RESET, 5, 200); // Scroll "RESET" message
-          resetSystem(); // Reinitialize system
-          startCount = 0; // Clear press count
+          scrollMessage180(MSG_RESET, 5, 200); // "RESET"メッセージをスクロール表示
+          resetSystem(); // システムを初期化
+          startCount = 0; // カウントをリセット
         } else {
-          // Single press: toggle between READY and COOL phase
+          // シングルプレス：READYとCOOLフェーズを切り替え
           if (phase == READY_PHASE) {
-            phase = COOL_PHASE; // Move to COOL phase
-            countdown = CYCLE_INTERVAL / 1000; // Set countdown for COOL phase
-            lastTick = now; // Record tick time
-            stopMotors(); // Ensure motors are off
+            phase = COOL_PHASE; // COOLフェーズへ移行
+            countdown = CYCLE_INTERVAL / 1000; // COOLフェーズのカウントダウン設定
+            lastTick = now; // タイマー更新
+            stopMotors(); // モーターを停止
           } else {
-            phase = READY_PHASE; // Return to READY phase
+            phase = READY_PHASE; // READYフェーズに戻す
             countdown = 0;
             stopMotors();
-            readyScrollIndex = -4; // Reset scroll position
+            readyScrollIndex = -4; // スクロール位置を初期化
           }
         }
       }
     }
   }
 
-  // --- Phase Control ---
+  // --- フェーズ制御 ---
   switch (phase) {
     case READY_PHASE:
-      // Show scrolling "READY" message
-      stopMotors();       // Ensure motors are off
-      scrollReadyLoop();  // Scroll "READY" on display
+      stopMotors();       // モーターを停止
+      scrollReadyLoop();  // "READY"メッセージをスクロール表示
       break;
 
     case COOL_PHASE:
-      // Rest phase between active cycles
-      stopMotors();       // Ensure motors are off
-      motor1AutoTriggered = false; // Reset auto-trigger flag for Motor1
+      stopMotors();       // モーターを停止
+      motor1AutoTriggered = false; // Motor1の自動起動フラグをリセット
 
-      // Countdown timer for COOL phase
+      // COOLフェーズのカウントダウン処理
       if (now - lastTick >= 1000) {
         lastTick = now;
         countdown--;
         if (countdown <= 0) {
-          // Transition to ACTIVE phase
+          // ACTIVEフェーズへ移行
           phase = ACTIVE_PHASE;
-          countdown = CYCLE_ACTIVE / 1000; // Set countdown for ACTIVE phase
-          cycle++; // Increment cycle count
-          motor2Running = true; // Start Motor2
-          motor2Hits = 0;       // Reset piezo hit counter
-          activateMagnet();     // Turn on electromagnet
-          activePhaseStart = now; // Record start time of ACTIVE phase
+          countdown = CYCLE_ACTIVE / 1000; // ACTIVEフェーズのカウントダウン設定
+          cycle++; // サイクル数をインクリメント
+          motor2Running = true; // Motor2を起動
+          motor2Hits = 0;       // ヒットカウントをリセット
+          activateMagnet();     // 電磁石をON
+          activePhaseStart = now; // ACTIVEフェーズの開始時刻を記録
         }
       }
-      showTimeCycleWithHits(countdown, cycle, motor2Hits, now); // Update display
+      showTimeCycleWithHits(countdown, cycle, motor2Hits, now); // ディスプレイを更新
       break;
 
-    case ACTIVE_PHASE:
-      // Main working phase: motors run, piezo counts hits
+        case ACTIVE_PHASE:
+      // ==== ACTIVEフェーズ（メイン動作フェーズ） ====
+      // モーターが動作し、圧電センサーのヒットをカウントするフェーズ
 
-      // Countdown timer for ACTIVE phase
-      if (now - lastTick >= 1000) {
-        lastTick = now;
-        countdown--;
-        if (countdown <= 0) {
-          motor1AutoTriggered = false; // Reset auto-trigger flag
-          if (cycle >= MAX_CYCLES) {
-            // All cycles complete: show "FINISH" and reset
-            stopMotors();
+      // --- ACTIVEフェーズのカウントダウン処理 ---
+      if (now - lastTick >= 1000) { // 1秒ごとにカウントダウンを更新
+        lastTick = now;             // 最終更新時刻を記録
+        countdown--;                // 残り時間を1秒減らす
+
+        if (countdown <= 0) {       // カウントが0になったらフェーズ終了
+          motor1AutoTriggered = false; // Motor1の自動起動フラグをリセット
+
+          if (cycle >= MAX_CYCLES) { // 最大サイクル数に達した場合
+            stopMotors(); // すべてのモーターを停止
             const uint8_t MSG_FINISH[] = { MY_SEG_F, MY_SEG_I, MY_SEG_N, MY_SEG_I, MY_SEG_S, MY_SEG_H };
-            scrollMessage180(MSG_FINISH, 6, 300); // Scroll "FINISH"
-            resetSystem(); // Reinitialize system
-            break;
+            scrollMessage180(MSG_FINISH, 6, 300); // "FINISH"メッセージをスクロール表示
+            resetSystem(); // システムを初期化してREADYフェーズに戻す
+            break; // ループを抜ける
           }
-          // Move to COOL phase
+
+          // 次のフェーズへ移行（COOLフェーズ）
           phase = COOL_PHASE;
-          countdown = CYCLE_INTERVAL / 1000;
-          stopMotors();
+          countdown = CYCLE_INTERVAL / 1000; // COOLフェーズの時間を設定
+          stopMotors(); // モーターを停止
         }
       }
 
-      // --- Debounce for Motor1 Button ---
-      const unsigned long DEBOUNCE_S1 = 50; // Debounce threshold for Motor1 button
-      static int lastRawS1 = HIGH;          // Previous raw state
-      static unsigned long lastS1Debounce = 0; // Last debounce timestamp
+      // --- Motor1ボタンのデバウンス処理 ---
+      const unsigned long DEBOUNCE_S1 = 50; // Motor1ボタンのデバウンス時間（ms）
+      static int lastRawS1 = HIGH;          // 前回の生のボタン状態
+      static unsigned long lastS1Debounce = 0; // 最後に状態が変化した時刻
 
-      int rawS1 = digitalRead(SWITCH1_PIN); // Read Motor1 button
+      int rawS1 = digitalRead(SWITCH1_PIN); // Motor1ボタンの現在の状態を読み取る
       if (rawS1 != lastRawS1) {
-        lastS1Debounce = now; // Reset debounce timer
+        lastS1Debounce = now; // 状態が変化したらデバウンスタイマーをリセット
       }
-      lastRawS1 = rawS1;
+      lastRawS1 = rawS1; // 前回の状態を更新
 
-      // Manual trigger for Motor1
+      // --- Motor1の手動起動処理 ---
       if (digitalRead(SWITCH1_PIN) == LOW) {
-        motor1Start = now;     // Record start time
-        motor1Active = true;   // Activate Motor1
+        motor1Start = now;     // Motor1の起動時刻を記録
+        motor1Active = true;   // Motor1を起動
       }
 
-      // Auto-trigger Motor1 at 20s remaining (once per cycle)
+      // --- Motor1の自動起動処理（残り20秒で1回だけ） ---
       if (!motor1Active && !motor1AutoTriggered && countdown == 20) {
-        motor1Start = now;     // Record start time
-        motor1Active = true;   // Activate Motor1
-        motor1AutoTriggered = true; // Prevent retriggering in same cycle
+        motor1Start = now;     // Motor1の起動時刻を記録
+        motor1Active = true;   // Motor1を起動
+        motor1AutoTriggered = true; // 同じサイクル内での再起動を防止
       }
 
-      // Update Motor1 status (stop if time expired or phase changed)
-      updateMotor1(now);
+      // --- Motor1の状態更新 ---
+      updateMotor1(now); // 時間切れやフェーズ変更による停止処理を実行
 
-      // Stop Motor2 if hit target or time is almost up
+      // --- Motor2の停止条件判定 ---
+      // ヒット数が目標に達した、または残り時間が10秒以下になった場合
       if (motor2Running && (motor2Hits >= MOTOR2_STOP_TARGET || (now - activePhaseStart >= CYCLE_ACTIVE - 10000))) {
-        motor2Running = false; // Stop Motor2
+        motor2Running = false; // Motor2を停止
       }
 
-      // Update Motor2 and other components
-      driveMotor2();          // Control Motor2 output
-      checkMotor2Piezo(now);  // Check piezo sensor for hits
-      updateMagnet(now);      // Turn off magnet if time expired
-      showTimeCycleWithHits(countdown, cycle, motor2Hits, now); // Update display
-      break;
+      // --- Motor2およびその他のコンポーネントの更新処理 ---
+      driveMotor2();          // Motor2のPWM制御とリレー・LEDの更新
+      checkMotor2Piezo(now);  // 圧電センサーのヒット検出とカウント
+      updateMagnet(now);      // 電磁石の自動停止（10秒後）
+      showTimeCycleWithHits(countdown, cycle, motor2Hits, now); // ディスプレイ表示を更新
+      break; // ACTIVEフェーズの処理終了
   }
 }
